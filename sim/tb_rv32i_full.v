@@ -107,7 +107,7 @@ module tb_rv32i_full;
                 32'h050: check_reg(20, 10 >>> 10, "SRL");
                 32'h054: check_reg(21, -20 >>> 10, "SRA");
                 // 4. Memory Store
-                32'h058: check_mem(0, -32'd10, "SW");
+                32'h058: check_mem(32'hfffffff0, -32'd10, "SW");
                 // 32'h05c: check_mem(1, 32'h0000001e, "SH"); // mem[4]
                 // 32'h060: check_mem(1, 32'h0a00001e, "SB"); // mem[6] is part of mem[4] word
                 // 5. Memory Load
