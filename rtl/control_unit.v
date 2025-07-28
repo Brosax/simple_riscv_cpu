@@ -55,7 +55,7 @@ module control_unit(
             OPCODE_S_TYPE: begin
                 alu_src = 1'b1;
                 mem_write = 1'b1;
-                alu_op = 2'b00;
+                alu_op = 2'b11;
             end
             OPCODE_B_TYPE: begin
                 branch = 1'b1;
@@ -79,7 +79,7 @@ module control_unit(
             OPCODE_AUIPC: begin
                 reg_write = 1'b1;
                 alu_src = 1'b1;
-                alu_op = 2'b00;
+                alu_op = 2'b11;
             end
         endcase
     end
