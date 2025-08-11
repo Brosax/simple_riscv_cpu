@@ -6,15 +6,17 @@ module alu(
     output wire zero
 );
 
+    wire [4:0] shift_amount = operand2[4:0];
+
     // Lógica combinacional para las operaciones de la ALU
     always @(*) begin
         case (alu_control)
             4'b0000: result = operand1 & operand2; // AND
             4'b0001: result = operand1 | operand2; // OR
             4'b0010: result = operand1 + operand2; // ADD
-            4'b0011: result = operand1 << operand2[4:0]; // SLL
-            4'b0100: result = operand1 >> operand2[4:0]; // SRL
-            4'b0101: result = $signed(operand1) >>> operand2[4:0]; // SRA
+            4'b0011: result = operand1 << shift_amount; // SLL
+            4'b0100: result = operand1 >> shift_amount; // SRL
+            4'b0101: result = $signed(operand1) >>> shift_amount; // SRA
             4'b0110: result = operand1 - operand2; // SUB
             4'b0111: result = ($signed(operand1) < $signed(operand2)) ? 32'd1 : 32'd0; // SLT
             4'b1000: result = (operand1 < operand2) ? 32'd1 : 32'd0; // SLTU
