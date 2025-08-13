@@ -70,6 +70,7 @@ module control_unit(
                 reg_write = 1'b1;
                 jump = 1'b1;
                 alu_src = 1'b1;
+                alu_op = 2'b00; // Crucial fix: Set ALU op for address calculation
             end
             OPCODE_LUI: begin
                 reg_write = 1'b1;

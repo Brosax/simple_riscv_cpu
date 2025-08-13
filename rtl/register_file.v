@@ -11,6 +11,14 @@ module register_file(
 
     // Banco de 32 registros de 32 bits
     reg [31:0] registers[0:31];
+    integer i;
+
+    // Inicialización de todos los registros a 0 al inicio de la simulación
+    initial begin
+        for (i = 0; i < 32; i = i + 1) begin
+            registers[i] = 32'b0;
+        end
+    end
 
     // Escritura síncrona en el flanco de subida
     always @(posedge clk) begin

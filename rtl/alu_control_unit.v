@@ -19,7 +19,7 @@ module alu_control_unit(
 
     always @(*) begin
         case(alu_op)
-            // I-Type
+            // I-Type (ADDI, SLTI, etc.) and Load (address calculation)
             2'b00: begin
                 case(funct3)
                     3'b000: alu_control = ALU_ADD;  // ADDI
@@ -33,7 +33,7 @@ module alu_control_unit(
                     default: alu_control = 4'hX;
                 endcase
             end
-            // R-Type
+            // R-Type (ADD, SUB, etc.)
             2'b10: begin
                 case (funct3)
                     3'b000: alu_control = (funct7_bit5) ? ALU_SUB : ALU_ADD; // SUB, ADD
@@ -47,61 +47,18 @@ module alu_control_unit(
                     default: alu_control = 4'hX;
                 endcase
             end
-            // B-Type
+            // B-Type (Branches) - Always subtract for comparison
             2'b01: begin
-                case (funct3)
-                    3'b000, 3'b001: alu_control = ALU_SUB;  // BEQ, BNE (比较是否相等 -> sub)
-                    3'b100, 3'b101: alu_control = ALU_SLT;  // BLT, BGE (有符号比较 -> slt)
-                    3'b110, 3'b111: alu_control = ALU_SLTU; // BLTU, BGEU (无符号比较 -> sltu)
-                    default: alu_control = 4'hX;
-                endcase
+                alu_control = ALU_SUB;
             end
-            // U-Type and Load address calculation
+            // U-Type (LUI/AUIPC) and Store (address calculation)
             2'b11: begin
                 alu_control = ALU_ADD;
             end
-
             default: begin
-                alu_control = 4'hX;
+                alu_control = 4'hX; // Default to an invalid operation
             end
         endcase
-
-
-        /*
-        if (alu_op == 2'b00) begin // I-Type
-            if (funct3 == 3'b000) alu_control = ALU_ADD;
-            else if (funct3 == 3'b001) alu_control = ALU_SLL;
-            else if (funct3 == 3'b010) alu_control = ALU_SLT;
-            else if (funct3 == 3'b011) alu_control = ALU_SLTU;
-            else if (funct3 == 3'b100) alu_control = ALU_XOR;
-            else if (funct3 == 3'b101) alu_control = (funct7_bit5) ? ALU_SRA : ALU_SRL;
-            else if (funct3 == 3'b110) alu_control = ALU_OR;
-            else if (funct3 == 3'b111) alu_control = ALU_AND;
-            else alu_control = 4'hX;
-        end else if (alu_op == 2'b10) begin // R-Type
-            if (funct3 == 3'b000) alu_control = (funct7_bit5) ? ALU_SUB : ALU_ADD;
-            else if (funct3 == 3'b001) alu_control = ALU_SLL;
-            else if (funct3 == 3'b010) alu_control = ALU_SLT;
-            else if (funct3 == 3'b011) alu_control = ALU_SLTU;
-            else if (funct3 == 3'b100) alu_control = ALU_XOR;
-            else if (funct3 == 3'b101) alu_control = (funct7_bit5) ? ALU_SRA : ALU_SRL;
-            else if (funct3 == 3'b110) alu_control = ALU_OR;
-            else if (funct3 == 3'b111) alu_control = ALU_AND;
-            else alu_control = 4'hX;
-        end else if (alu_op == 2'b01) begin // B-Type
-            if (funct3 == 3'b000) alu_control = ALU_SUB; // BEQ
-            else if (funct3 == 3'b001) alu_control = ALU_SUB; // BNE
-            else if (funct3 == 3'b100) alu_control = ALU_SLT; // BLT
-            else if (funct3 == 3'b101) alu_control = ALU_SLT; // BGE
-            else if (funct3 == 3'b110) alu_control = ALU_SLTU; // BLTU
-            else if (funct3 == 3'b111) alu_control = ALU_SLTU; // BGEU
-            else alu_control = 4'hX;
-        end else if (alu_op == 2'b11) begin // U-Type and Load address calculation
-            alu_control = ALU_ADD;
-        end else begin
-            alu_control = 4'hX;
-        end
-        */
     end
 
 endmodule

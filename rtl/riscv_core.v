@@ -2,7 +2,10 @@ module riscv_core(
     input wire clk,
     input wire rst,
     output wire timer_interrupt, // Nueva salida para la interrupción del temporizador
-    inout wire [7:0] gpio_pins   // Nueva entrada/salida para los pines GPIO
+    inout wire [7:0] gpio_pins,   // Nueva entrada/salida para los pines GPIO
+    // --- Puertos para `tohost` ---
+    output wire host_write_enable,
+    output wire [31:0] host_data_out
 );
 
     // --- Señales del Datapath ---
@@ -155,6 +158,11 @@ module riscv_core(
         .gpio_pins(gpio_pins)
     );
 
+    // --- Lógica de `tohost` para riscv-tests ---
+    localparam TOHOST_ADDR = 32'h80001000;
+    assign host_write_enable = mem_write && (alu_result == TOHOST_ADDR);
+    assign host_data_out = reg_read_data2;
+
     // --- Multiplexación de Datos de Lectura para mem_read_data ---
     // Selecciona los datos de lectura de la memoria de datos o del periférico correspondiente
     assign mem_read_data = is_timer_access ? timer_read_data :
@@ -165,23 +173,25 @@ module riscv_core(
     assign pc_plus_4 = pc_current + 4;
     wire [31:0] pc_target_imm = pc_current + imm_extended; // Para JAL y Branch
 
-    // La ALU calcula reg1 + imm para JALR.
-    wire [31:0] pc_target_jalr = alu_result;
+    // La ALU calcula reg1 + imm para JALR. El resultado debe ser alineado.
+    wire [31:0] pc_target_jalr = {alu_result[31:1], 1'b0};
 
     wire take_branch;
     // Condición para tomar un salto condicional basado en funct3 y las banderas de la ALU
-    // Nota: Para los saltos, la ALU realiza una comparación (SUB, SLT, SLTU).
-    // El resultado de la comparación determina si tomamos el salto.
-    assign take_branch = (branch & ((funct3 == 3'b000 & alu_zero_flag) |      // BEQ
-                                    (funct3 == 3'b001 & ~alu_zero_flag) |     // BNE
-                                    (funct3 == 3'b100 & alu_result[0]) |      // BLT
-                                    (funct3 == 3'b101 & ~alu_result[0]) |     // BGE
-                                    (funct3 == 3'b110 & alu_result[0]) |      // BLTU
-                                    (funct3 == 3'b111 & ~alu_result[0])));    // BGEU
+    // Para saltos, la ALU realiza una resta (para BEQ/BNE) o una comparación (para SLT/SLTU)
+    // El resultado de la ALU (alu_result) o la bandera zero (alu_zero_flag) determina la decisión.
+    assign take_branch = (branch & (
+        (funct3 == 3'b000 & alu_zero_flag)   |      // BEQ: branch if zero
+        (funct3 == 3'b001 & ~alu_zero_flag)  |      // BNE: branch if not zero
+        (funct3 == 3'b100 & alu_result[0])   |      // BLT: branch if less than (result of SLT is 1)
+        (funct3 == 3'b101 & ~alu_result[0])  |      // BGE: branch if greater or equal (result of SLT is 0)
+        (funct3 == 3'b110 & alu_result[0])   |      // BLTU: branch if less than unsigned (result of SLTU is 1)
+        (funct3 == 3'b111 & ~alu_result[0])        // BGEU: branch if greater or equal unsigned (result of SLTU is 0)
+    ));
 
-    // Multiplexor para el siguiente valor del PC. Los saltos incondicionales tienen prioridad sobre los condicionales.
-    assign pc_next = (opcode == 7'b1101111) ? pc_target_imm :      // JAL
-                     (opcode == 7'b1100111) ? pc_target_jalr :     // JALR
+    // Multiplexor para el siguiente valor del PC.
+    assign pc_next = (jump && opcode == 7'b1101111) ? pc_target_imm :      // JAL
+                     (jump && opcode == 7'b1100111) ? pc_target_jalr :     // JALR
                      take_branch ? pc_target_imm :
                      pc_plus_4;
 
@@ -191,13 +201,13 @@ module riscv_core(
 
 
     // --- Debug Logic ---
-    always @(posedge clk)
+    /*always @(posedge clk)
     begin
         if(!rst)
         begin
             $display("PC: %h, INST: %h, reg_write: %b, rd: %d, wb_data: %h, alu_res: %h, op1: %h, op2: %h, alu_ctrl: %b", 
                      pc_current, instruction, reg_write, rd, write_back_data, alu_result, alu_operand1, alu_operand2, alu_control_signal);
         end
-    end
+    end*/
 
 endmodule
