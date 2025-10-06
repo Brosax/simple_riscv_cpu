@@ -47,9 +47,17 @@ module alu_control_unit(
                     default: alu_control = 4'hX;
                 endcase
             end
-            // B-Type (Branches) - Always subtract for comparison
+            // B-Type (Branches) - Select comparison type based on funct3
             2'b01: begin
-                alu_control = ALU_SUB;
+                case(funct3)
+                    3'b000: alu_control = ALU_SUB;  // BEQ
+                    3'b001: alu_control = ALU_SUB;  // BNE
+                    3'b100: alu_control = ALU_SLT;  // BLT
+                    3'b101: alu_control = ALU_SLT;  // BGE
+                    3'b110: alu_control = ALU_SLTU; // BLTU
+                    3'b111: alu_control = ALU_SLTU; // BGEU
+                    default: alu_control = 4'hX;
+                endcase
             end
             // U-Type (LUI/AUIPC) and Store (address calculation)
             2'b11: begin

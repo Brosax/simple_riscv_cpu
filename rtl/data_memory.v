@@ -8,7 +8,8 @@ module data_memory(
 );
 
     // Memoria para almacenar los datos (ej: 1024 palabras de 32 bits -> 4096 bytes)
-    reg [7:0] mem[0:4095];
+    //reg [7:0] mem[0:4095];
+    reg [7:0] mem[0:8192];
     // --- Lógica de Escritura ---
     always @(posedge clk) begin
         if (write_enable) begin

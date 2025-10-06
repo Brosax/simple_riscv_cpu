@@ -49,6 +49,9 @@ find "${TEST_ISA_DIR}" \( -name "rv32ui-p-*" -o -name "rv32mi-p-*" \) -type f | 
     # 执行 objcopy 命令
     "${TOOL_PREFIX}objcopy" -O verilog "${elf_file}" "${hex_file}"
 
+    # 删除地址说明符
+    sed -i '/^@/d' "${hex_file}"
+
     # 检查命令是否成功
     if [ $? -ne 0 ]; then
         echo "  -> ERROR: Failed to convert ${test_name}"

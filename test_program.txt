@@ -1,0 +1,1 @@
+/mnt/c/Users/xiangmin/Desktop/TFG/simple_riscv_cpu/test/isa/hex/rv32ui-p-andi.hex

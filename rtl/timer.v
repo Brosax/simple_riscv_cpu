@@ -15,6 +15,7 @@ module timer(
     always @(posedge clk or posedge rst) begin
         if (rst) begin
             mtime_reg <= 64'd0;
+            mtimecmp_reg <= 64'd0;
         end else begin
             mtime_reg <= mtime_reg + 64'd1;
         end

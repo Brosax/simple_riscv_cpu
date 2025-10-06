@@ -26,13 +26,16 @@ module immediate_generator(
                 imm_extended = {{20{instruction[31]}}, instruction[31:25], instruction[11:7]};
             // B-Type
             OPCODE_B_TYPE:
+                // imm[12:1] = {inst[31], inst[7], inst[30:25], inst[11:8]}
                 imm_extended = {{20{instruction[31]}}, instruction[7], instruction[30:25], instruction[11:8], 1'b0};
             // U-Type
             OPCODE_LUI, OPCODE_AUIPC:
                 imm_extended = {instruction[31:12], 12'b0};
             // J-Type
             OPCODE_JAL:
-                imm_extended = {{12{instruction[31]}}, instruction[19:12], instruction[20], instruction[30:21], 1'b0};
+                // imm[20:1] = {inst[31], inst[19:12], inst[20], inst[30:21]}
+                imm_extended = {{11{instruction[31]}}, instruction[31], instruction[19:12], instruction[20], instruction[30:21], 1'b0};
+                //imm_extended = {{12{instruction[31]}}, instruction[19:12], instruction[20], instruction[30:21], 1'b0};
             default:
                 imm_extended = 32'hxxxxxxxx;
         endcase

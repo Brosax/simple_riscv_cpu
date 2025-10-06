@@ -33,20 +33,16 @@ module tb_riscv_core;
     initial begin
         reg [255*8:0] test_program_file;
         integer file;
+        integer i;
 
-        // 1. Leer el nombre del programa de test desde un fichero
-        file = $fopen("test_program.txt", "r");
-        if (file) begin
-            $fscanf(file, "%s", test_program_file);
-            $fclose(file);
-            $display("L_INFO: Loading test program: %s", test_program_file);
-        
-            // 2. Cargar el programa en la memoria de instrucciones del DUT
-            $readmemh(test_program_file, uut.instr_mem.mem);
-        end else begin
-            $display("L_ERROR: test_program.txt not found. Aborting.");
-            $finish;
+        // 0. Inicializar la memoria de instrucciones a 0 (NOP)
+        for (i = 0; i < 8192; i = i + 1) begin
+            uut.instr_mem.mem[i] = 32'h00000000;
         end
+
+        // 1. Cargar el programa en la memoria de instrucciones del DUT
+        $display("L_INFO: Loading test program from inst.mem");
+        $readmemh("inst.mem", uut.instr_mem.mem);
 
         // 3. Aplicar pulso de Reset
         rst = 1;
@@ -89,12 +85,17 @@ module tb_riscv_core;
         end
     endtask
 
-    /*
-    // --- Generación de VCD para debugging ---
+    // --- Debug: Monitor Store Operations ---
+    always @(posedge clk) begin
+        if (uut.ctrl_unit.mem_write) begin
+            $display("L_DEBUG: Store detected at address %h with data %h", uut.alu_result, uut.reg_read_data2);
+        end
+    end
+
+        // --- Generación de VCD para debugging ---
     initial begin
         $dumpfile("tb_riscv_core.vcd");
         $dumpvars(0, tb_riscv_core);
     end
-    */
 
 endmodule

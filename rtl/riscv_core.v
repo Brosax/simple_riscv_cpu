@@ -43,7 +43,8 @@ module riscv_core(
     // GPIO:        [0xFFFF0010 - 0xFFFF001F]
     wire is_timer_access = (alu_result >= 32'hFFFF0000) && (alu_result <= 32'hFFFF000F);
     wire is_gpio_access = (alu_result >= 32'hFFFF0010) && (alu_result <= 32'hFFFF001F);
-    wire is_data_mem_access = !(is_timer_access || is_gpio_access); // Por defecto, es acceso a la memoria de datos
+    wire is_tohost_access = (alu_result == TOHOST_ADDR); // Detect access to tohost
+    wire is_data_mem_access = !(is_timer_access || is_gpio_access || is_tohost_access); // Exclude tohost from data memory
 
     // Señales de habilitación de lectura/escritura para cada componente
     wire data_mem_read_enable = mem_read && is_data_mem_access;
@@ -88,6 +89,7 @@ module riscv_core(
     // 4. Register File
     register_file reg_file(
         .clk(clk),
+        .rst(rst),
         .read_reg1(rs1),
         .read_reg2(rs2),
         .write_reg(rd),
@@ -200,14 +202,14 @@ module riscv_core(
     assign write_back_data = jump ? pc_plus_4 : (mem_to_reg ? mem_read_data : alu_result);
 
 
-    // --- Debug Logic ---
-    /*always @(posedge clk)
+    // --- Debug Trace Logic ---
+    always @(posedge clk)
     begin
         if(!rst)
         begin
             $display("PC: %h, INST: %h, reg_write: %b, rd: %d, wb_data: %h, alu_res: %h, op1: %h, op2: %h, alu_ctrl: %b", 
                      pc_current, instruction, reg_write, rd, write_back_data, alu_result, alu_operand1, alu_operand2, alu_control_signal);
         end
-    end*/
+    end
 
 endmodule
