@@ -77,12 +77,13 @@ module control_unit(
                 alu_src = 1'b1;
                 alu_op = 2'b11; // Special case for LUI
             end
-            OPCODE_AUIPC: begin
-                reg_write = 1'b1;
-                alu_src = 1'b1;
-                alu_op = 2'b11;
-            end
-        endcase
-    end
+		OPCODE_AUIPC: begin
+			reg_write = 1'b1;
+			alu_src = 1'b1;
+			alu_op = 2'b11;
+		end
+		default: ;
+	endcase
+	end
 
 endmodule

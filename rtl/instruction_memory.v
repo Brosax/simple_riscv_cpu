@@ -1,14 +1,14 @@
 module instruction_memory(
-    input wire [31:0] address,
-    output wire [31:0] instruction
+	input wire [31:0] address,
+	output wire [31:0] instruction
 );
 
-    // Memoria para almacenar las instrucciones (ej: 8192 instrucciones de 32 bits)
-    reg [31:0] mem[0:8191];
+	// Instruction memory: 8192 instructions (32KB)
+	reg [31:0] mem[0:8191];
 
-    // La lectura es asíncrona.
-    // Se restan 0x80000000 de la dirección para mapear el inicio del programa a la dirección 0 de la memoria.
-    // Luego se divide por 4 para direccionar palabras.
-    assign instruction = mem[(address - 32'h80000000) >> 2];
+	// Address mapping: subtract base address and divide by 4 for word addressing
+	// Includes bounds checking for safety
+	wire [31:0] word_addr = (address - 32'h80000000) >> 2;
+	assign instruction = (word_addr < 8192) ? mem[word_addr] : 32'h00000013; // NOP (addi x0,x0,0)
 
 endmodule

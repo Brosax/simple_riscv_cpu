@@ -21,11 +21,11 @@ module alu(
             4'b0111: result = ($signed(operand1) < $signed(operand2)) ? 32'd1 : 32'd0; // SLT
             4'b1000: result = (operand1 < operand2) ? 32'd1 : 32'd0; // SLTU
             4'b1001: result = operand1 ^ operand2; // XOR
-            default: result = 32'hxxxxxxxx; // Valor por defecto
-        endcase
-    end
+		default: result = 32'b0;
+	endcase
+	end
 
-    // La bandera 'zero' se activa si el resultado es 0
-    assign zero = (result == 32'b0);
+	// Zero flag
+	assign zero = (result == 32'b0);
 
 endmodule
