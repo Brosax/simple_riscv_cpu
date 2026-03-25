@@ -1,0 +1,43 @@
+# ===========================================================================
+# docker-compose.yml — 本地开发环境
+# 将本地仓库挂载到容器 /workspace，直接在容器里跑仿真，无需本机安装工具
+#
+# 常用命令：
+#   启动交互式 shell：
+#     docker compose run --rm sim
+#
+#   直接运行 pyuvm 仿真：
+#     docker compose run --rm sim make -C tb/uvm sim
+#
+#   查看仿真帮助：
+#     docker compose run --rm sim make -C tb/uvm help
+# ===========================================================================
+services:
+  sim:
+    # 使用本地 Dockerfile 构建镜像（首次运行自动构建）
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    # 镜像名（方便 CI 缓存复用）
+    image: simple_riscv_cpu_sim:latest
+
+    # 将本地仓库目录挂载到容器 /workspace
+    # 修改源码后无需重新构建镜像，直接重跑即可
+    volumes:
+      - .:/workspace
+
+    # 工作目录
+    working_dir: /workspace
+
+    # 保持 stdin 打开，支持交互式调试
+    stdin_open: true
+    tty: true
+
+    # 传入主机 DISPLAY 环境变量（Linux 上可在容器内打开 GTKWave）
+    environment:
+      - DISPLAY=${DISPLAY:-:0}
+
+    # X11 socket 挂载（Linux GTKWave 用，macOS/Windows 可忽略）
+    # volumes 中已包含，额外挂载 X11 socket：
+    # - /tmp/.X11-unix:/tmp/.X11-unix:ro
