@@ -1,29 +1,30 @@
 """
-jtag_scoreboard.py — UVMScoreboard
+jtag_scoreboard.py — uvm_scoreboard
 接收来自 monitor 的 JtagTransaction，验证 IDCODE 和 BYPASS 的正确性。
 
 检查规则：
   - IDCODE：DR 移出低 32 位应等于 0x00000001（见 jtag_tap.v IDCODE_VAL）
-  - BYPASS：TDO 应延迟一拍透传 TDI（dr_out = dr_in >> 1，最高位补 0）
+  - BYPASS：TDO 应延迟一拍透传 TDI（dr_out == dr_in >> 1）
 """
-from pyuvm import UVMScoreboard, UVMTLMAnalysisFIFO
+from pyuvm import uvm_scoreboard, uvm_tlm_analysis_fifo
+
 from jtag_transaction import JtagTransaction, IR_IDCODE, IR_BYPASS
 
-# DUT 中定义的 IDCODE 值（jtag_tap.v 第 102 行）
+# DUT 中定义的 IDCODE 值（jtag_tap.v）
 EXPECTED_IDCODE = 0x00000001
 
 
-class JtagScoreboard(UVMScoreboard):
+class JtagScoreboard(uvm_scoreboard):
     """
-    UVM Scoreboard：通过 analysis FIFO 接收事务并执行断言检查。
+    UVM Scoreboard：通过 uvm_tlm_analysis_fifo 接收事务并执行断言检查。
     """
 
     def build_phase(self):
-        # analysis FIFO：接收来自 monitor 的事务
-        self.analysis_fifo = UVMTLMAnalysisFIFO("analysis_fifo", self)
-        # 对外暴露的 export（供 env 连接 monitor 的 ap）
+        # analysis FIFO：接收来自 monitor 的事务（内部缓冲，异步消费）
+        self.analysis_fifo   = uvm_tlm_analysis_fifo("analysis_fifo", self)
+        # 对外暴露 export，供 env 的 connect_phase 连接 monitor.ap
         self.analysis_export = self.analysis_fifo.analysis_export
-        # 计数器
+        # 统计计数
         self.pass_cnt = 0
         self.fail_cnt = 0
 
@@ -34,7 +35,7 @@ class JtagScoreboard(UVMScoreboard):
             self._check(tr)
 
     def _check(self, tr: JtagTransaction):
-        """根据 IR 类型执行对应的检查"""
+        """根据 IR 类型执行对应检查"""
         if tr.ir == IR_IDCODE:
             self._check_idcode(tr)
         elif tr.ir == IR_BYPASS:
@@ -58,12 +59,11 @@ class JtagScoreboard(UVMScoreboard):
 
     def _check_bypass(self, tr: JtagTransaction):
         """
-        BYPASS 检查：TDO 应比 TDI 延迟一拍。
-        由于采集的 dr_out 是在 SHIFT_DR 期间同步采样的，
-        dr_out 应等于 dr_in 右移一位（最高位补 0）。
+        BYPASS 检查：TDO 比 TDI 延迟一拍，
+        即 dr_out == dr_in >> 1（最高位补 0）
         """
-        bits = tr.dr_bits
-        mask = (1 << bits) - 1
+        bits     = tr.dr_bits
+        mask     = (1 << bits) - 1
         expected = (tr.dr_in >> 1) & mask
         got      = tr.dr_out & mask
 
@@ -75,7 +75,7 @@ class JtagScoreboard(UVMScoreboard):
         else:
             self.logger.error(
                 f"FAIL BYPASS: dr_out=0x{got:x}，期望 0x{expected:x} "
-                f"（dr_in=0x{tr.dr_in:x}）"
+                f"(dr_in=0x{tr.dr_in:x})"
             )
             self.fail_cnt += 1
 
