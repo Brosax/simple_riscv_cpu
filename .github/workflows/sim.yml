@@ -1,6 +1,6 @@
 # ===========================================================================
 # .github/workflows/sim.yml — GitHub Actions CI
-# 触发时机：push 到任意分支，或提交 Pull Request
+# 触发时机：仅限手动触发（Actions 页面点击 "Run workflow"）
 # 功能：
 #   1. 构建 Docker 镜像（利用 layer cache 加速）
 #   2. 在容器内运行 tb/uvm/ 的 pyuvm 仿真测试
@@ -9,10 +9,7 @@
 name: JTAG pyUVM 仿真 CI
 
 on:
-  push:
-    branches: ["**"]       # 推送到任意分支时触发
-  pull_request:
-    branches: ["**"]       # 提交 PR 时触发
+  workflow_dispatch:       # 仅手动触发（GitHub Actions 页面 → Run workflow）
 
 jobs:
   # --------------------------------------------------------------------------
