@@ -4,7 +4,22 @@ module riscv_core(
 	output wire timer_interrupt,
 	inout wire [7:0] gpio_pins,
 	output wire host_write_enable,
-	output wire [31:0] host_data_out
+	output wire [31:0] host_data_out,
+	// Debug / JTAG interface
+	input wire        debug_stall,         // freeze PC during debug access
+	output wire       debug_stall_status,  // current stall state
+	output wire [31:0] debug_pc_value,     // current PC value
+	input wire [4:0]  debug_reg_addr,
+	input wire        debug_reg_read,
+	input wire        debug_reg_write,
+	input wire [31:0] debug_reg_wdata,
+	output wire [31:0] debug_reg_rdata,
+	input wire        debug_mem_read,
+	input wire [31:0] debug_mem_addr,
+	input wire        debug_mem_write,
+	input wire [31:0] debug_mem_wdata,
+	input wire [1:0]  debug_mem_wstrb,
+	output wire [31:0] debug_mem_rdata
 );
 
 	// Opcode definitions (shared with control_unit.v)
@@ -19,10 +34,21 @@ module riscv_core(
 	localparam OPCODE_AUIPC = 7'b0010111;
 
 	// Memory-mapped I/O address constants
-	localparam TOHOST_ADDR = 32'h80001000;
+	// Note: 0x80001000 is used as the data section address by pre-compiled ISA tests
+	// (linked at 0x00000000, data ALIGN(0x1000)). Using 0x80002000 avoids collisions.
+	localparam TOHOST_ADDR = 32'h80002000;
 
 	// Datapath signals
 	wire [31:0] pc_current, pc_next, pc_plus_4, pc_branch;
+
+	// Debug stall state: CPU is halted whenever debug_stall is asserted.
+	// JTAG clears it by driving debug_stall=0 (typically via DEBUG_RESET command).
+	reg cpu_stall;
+	always @(posedge clk or posedge rst) begin
+		if (rst)   cpu_stall <= 1'b0;
+		else        cpu_stall <= debug_stall;
+	end
+	wire stall = cpu_stall;
 	wire [31:0] instruction;
 	wire [31:0] imm_extended;
 	wire [31:0] alu_result, alu_operand2;
@@ -75,6 +101,7 @@ module riscv_core(
 	pc_register pc_reg(
 		.clk(clk),
 		.rst(rst),
+		.stall(stall),
 		.pc_in(pc_next),
 		.pc_out(pc_current)
 	);
@@ -108,7 +135,11 @@ module riscv_core(
 		.write_data(write_back_data),
 		.write_enable(reg_write),
 		.read_data1(reg_read_data1),
-		.read_data2(reg_read_data2)
+		.read_data2(reg_read_data2),
+		.debug_read_addr(debug_reg_addr),
+		.debug_write_enable(debug_reg_write),
+		.debug_write_data(debug_reg_wdata),
+		.debug_read_data(debug_reg_rdata)
 	);
 
 	// 5. Immediate Generator
@@ -147,7 +178,13 @@ module riscv_core(
 		.write_data(reg_read_data2),
 		.write_enable(data_mem_write_enable),
 		.read_data(mem_read_data_from_data_mem),
-		.funct3(funct3)
+		.funct3(funct3),
+		.debug_mem_read(debug_mem_read),
+		.debug_mem_addr(debug_mem_addr),
+		.debug_mem_write(debug_mem_write),
+		.debug_mem_wdata(debug_mem_wdata),
+		.debug_mem_wstrb(debug_mem_wstrb),
+		.debug_mem_rdata(debug_mem_rdata)
 	);
 
 	// 9. Timer
@@ -175,6 +212,10 @@ module riscv_core(
 	// tohost logic for riscv-tests
 	assign host_write_enable = mem_write && (alu_result == TOHOST_ADDR);
 	assign host_data_out = reg_read_data2;
+
+	// Debug outputs
+	assign debug_stall_status = cpu_stall;
+	assign debug_pc_value = pc_current;
 
 	// Read data multiplexer
 	assign mem_read_data = is_timer_access ? timer_read_data :
