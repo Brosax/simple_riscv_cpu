@@ -28,8 +28,7 @@ jobs:
       # -----------------------------------------------------------------------
       - name: 检出仓库
         uses: actions/checkout@v4
-        with:
-          submodules: recursive   # 初始化测试子模块
+        # CI 只需 RTL + tb/uvm，不依赖任何 submodule，无需 submodules 选项
 
       # -----------------------------------------------------------------------
       # 步骤 2：设置 Docker Buildx（支持多平台构建和 cache）
