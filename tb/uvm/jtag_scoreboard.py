@@ -64,7 +64,7 @@ class JtagScoreboard(uvm_scoreboard):
         """
         bits     = tr.dr_bits
         mask     = (1 << bits) - 1
-        expected = (tr.dr_in >> 1) & mask
+        expected = (tr.dr_in << 1) & mask
         got      = tr.dr_out & mask
 
         if got == expected:

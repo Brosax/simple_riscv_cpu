@@ -1,0 +1,238 @@
+% !TEX root = A0.MiTFG.tex
+
+
+\chapterbegin{Metodología de Verificación y Entorno de Pruebas}
+\label{chp:Verificacion}
+
+\section{Estrategia y Plan de Verificación}
+\label{sec:VerifStrategy}
+
+\subsection{Objetivos de Verificación}
+\label{sec:VerifGoals}
+
+La verificación de un procesador RISC-V de esta naturaleza presenta desafíos singulares derivados de la naturaleza heterogénea del diseño: por un lado, el camino de datos en implementación monociclo exige una validación exhaustiva de las señales de control y el flujo de datos entre módulos; por otro, la interfaz de depuración JTAG requiere una verificación precisa del protocolo IEEE 1149.1 a nivel de transiciones de estado. Ante esta dualidad, el proyecto adopta una estrategia de verificación en cascada que aborda cada aspecto del diseño con las herramientas más apropiadas.
+
+Los objetivos fundamentales de la verificación se establecen en tres niveles de abstracción:
+
+\textbf{Objetivos funcionales:} Validar que la implementación cumple con la especificación del conjunto de instrucciones RV32I, verificando que cada instrucción produce el resultado correcto para todas las combinaciones de operandos contempladas por el diseño.
+
+\textbf{Objetivos de cobertura:} Alcanzar niveles de cobertura que garanticen la detección de defectos de diseño con alta probabilidad. Se establece como meta una cobertura de código superior al 90\% y cobertura de funciones completa para los módulos críticos.
+
+\textbf{Objetivos de protocolo:} Verificar la correcta implementación de la interfaz JTAG, asegurando el cumplimiento del estándar IEEE 1149.1 y la correcta operación de los registros de depuración.
+
+\subsection{Modelo de Cobertura}
+\label{sec:CoverageModel}
+
+El modelo de cobertura adoptado se estructura en dos dimensiones complementarias:
+
+\textbf{Cobertura de código:} Mide el grado en que el código RTL ha sido ejercitado durante la simulación. Se distingue entre:
+\begin{itemize}
+    \item \textit{Coverage de línea:} Porcentaje de líneas de código ejecutadas
+    \item \textit{Coverage de branching:} Porcentaje de bifurcaciones tomadas en sentencias condicionales
+    \item \textit{Coverage de toggle:} Conmutación de cada bit en los puertos de módulo
+\end{itemize}
+
+\textbf{Cobertura funcional:} Captura el espacio de verificación desde una perspectiva orientada a las características del diseño:
+\begin{itemize}
+    \item Cobertura de instrucciones: Cada opcode RV32I ha sido ejecutado
+    \item Cobertura de modos de dirección: Todos los modos de direccionamiento de load/store
+    \item Cobertura de excepciones: Condiciones de excepción generadas y manejadas
+    \item Cobertura de integridad del protocolo: Transiciones de estado JTAG ejercitadas
+\end{itemize}
+
+\subsection{Arquitectura de Verificación en Cuatro Niveles}
+\label{sec:FourLevelArch}
+
+El proyecto implementa una arquitectura de verificación en cascada compuesta por cuatro niveles progresivos, donde cada nivel construye sobre las garantías proporcionadas por los anteriores:
+
+\begin{table}[H]
+\centering
+\begin{tabular}{|c|c|l|c|}
+\hline
+\textbf{Nivel} & \textbf{Enfoque} & \textbf{Objetivo} & \textbf{Herramienta} \\
+\hline
+1 & Unitario & Validación de componentes individuales & Icarus Verilog \\
+\hline
+2 & Integración & Verificación del camino de datos completo & Icarus + riscv-tests \\
+\hline
+3 & Protocolo & Validación de interfaz JTAG & Cocotb \\
+\hline
+4 & Sistemático & Verificación estructural con coverage & pyUVM \\
+\hline
+\end{tabular}
+\caption{Arquitectura de verificación en cuatro niveles}
+\label{tab:VerifArch}
+\end{table}
+
+Esta estructura en niveles responde a principios de verificación establecidas en la literatura~\cite{VerificacionMetodologia}: los defectos encontrados en niveles inferiores tienden a ser más localitzables y corregibles, mientras que los niveles superiores validan la integración correcta de los componentes verificados independientemente.
+
+La relación entre niveles sigue un patrón de embudo: el primer nivel descarta la mayoría de defectos unitarios, el segundo verifica la composición correcta, y los niveles superiores validan aspectos sistémicos que no pueden verificarse en niveles inferiores.
+
+\section{Verificación Unitaria e Integración}
+\label{sec:UnitIntegration}
+
+\subsection{Pruebas Unitarias con Icarus Verilog}
+\label{sec:UnitTests}
+
+El nivel más básico de verificación se lleva a cabo mediante pruebas unitarias escritas en Verilog puro. Cada módulo del procesador cuenta con un banco de pruebas dedicado en el directorio \texttt{tb/unit/}, siguiendo un esquema de verificación glass-box donde los estímulos se diseñan para excitar condiciones específicas del módulo bajo prueba.
+
+La filosofía detrás de las pruebas unitarias es doble: por una parte, la detección temprana de defectos en módulos individuales reduce significativamente el costo de depuración al evitar la propagación de errores a niveles superiores; por otra, la capacidad de ejecutar pruebas de manera aislada facilita la identificación precisa de la fuente de un fallo.
+
+Los módulos subjected a pruebas unitarias y sus objetivos de cobertura se detallan en la Tabla~\ref{tab:UnitCoverage}:
+
+\begin{table}[H]
+\centering
+\begin{tabular}{|l|p{6cm}|c|}
+\hline
+\textbf{Módulo} & \textbf{Propiedad Verificada} & \textbf{Criterio} \\
+\hline
+\texttt{alu.v} & Operaciones aritméticas y lógicas para todos los funct3 & 100\% funct3 \\
+\hline
+\texttt{alu\_control\_unit.v} & Decodificación alu\_op × funct3 → control & Cobertura completa \\
+\hline
+\texttt{control\_unit.v} & Señales de control para cada opcode & 100\% opcode \\
+\hline
+\texttt{data\_memory.v} & Lectura/escritura con stall de depuración & Casos de stall \\
+\hline
+\texttt{gpio.v} & Escritura y lectura de registros GPIO & Modos de operación \\
+\hline
+\texttt{immediate\_generator.v} & Sign-extension para tipos I/S/B/U/J & 100\% tipos imm \\
+\hline
+\texttt{pc\_register.v} & Actualización de PC con soporte stall & Casos de stall \\
+\hline
+\texttt{register\_file.v} & Lectura/escritura con puerto de depuración & Forwarding y stall \\
+\hline
+\texttt{timer.v} & Conteo e interrupción por match & Valores de timeout \\
+\hline
+\end{tabular}
+\caption{Cobertura de pruebas unitarias por módulo}
+\label{tab:UnitCoverage}
+\end{table}
+
+La ejecución de las pruebas unitarias se realiza mediante el target \texttt{unit-tests} del Makefile principal. Cada banco de pruebas genera un diagnóstico pass/fail que permite una localización rápida de defectos unitarios.
+
+\subsection{Testbench de Integración rv32i}
+\label{sec:IntegrationTB}
+
+El segundo nivel de verificación corresponde a las pruebas de integración del camino de datos completo. El archivo \texttt{tb/integration/tb\_rv32i\_inline.v} instancia el módulo \texttt{riscv\_core} junto con un entorno de memoria de instrucciones embebido que permite la inyección directa de secuencias de instrucciones en formato hexadecimal.
+
+A diferencia de las pruebas unitarias, el testbench de integración opera en modo black-box, observando únicamente las señales de interfaz del procesador (memoria de datos, señales de interrupción, puerto JTAG) sin acceso interno a los módulos. Este enfoque verifica que la composición de módulos funciona correctamente según la especificación del conjunto de instrucciones.
+
+\subsection{Suite de Pruebas ISA (riscv-tests)}
+\label{sec:ISATests}
+
+El nivel más riguroso de verificación funcional corresponde a la regresión ISA. El proyecto utiliza la suite oficial de pruebas de cumplimiento de RISC-V, conocida como \texttt{riscv-tests}, la cual define un conjunto exhaustivo de programas de prueba para cada instrucción del conjunto de instrucciones base.
+
+Cada prueba de la suite consiste en un programa en lenguaje máquina que exercita un subconjunto específico de instrucciones RV32I. La ejecución del programa produce una firma (\textit{signature}) de 256 palabras que representa el estado final de los registros y la memoria. Esta firma se compara con la firma de referencia esperada para determinar si la implementación cumple con la especificación.
+
+El proceso de verificación ISA sigue el siguiente flujo:
+
+\textbf{Generación de archivos de memoria:} El script \texttt{scripts/generate\_mem\_files.sh} genera los archivos \texttt{.mem} que contienen las instrucciones codificadas en hexadecimal, uno por cada prueba de la suite. Los archivos resultantes se almacenan en \texttt{tests/isa/mem/}.
+
+\textbf{Compilación y ejecución:} El archivo \texttt{tb/isa/tb\_isa\_test.v} se compila junto con todas las fuentes RTL. La regresión completa se ejecuta mediante \texttt{make isa-regression}, comparando las firmas generadas con las firmas de referencia almacenadas en el repositorio.
+
+La suite riscv-tests proporciona un nivel de confianza alto en la correctitud de la implementación, dado que ha sido validada exhaustivamente por la comunidad RISC-V y constituye el estándar de facto para la verificación de cumplimiento de instrucciones.
+
+\section{Verificación a Nivel de Protocolo}
+\label{sec:ProtocolVerification}
+
+\subsection{Verificación JTAG con Cocotb}
+\label{sec:CocotbJTAG}
+
+El tercer nivel de verificación se orienta específicamente a la validación de la interfaz de depuración JTAG. Dado que la implementación del procesador incluye un controlador TAP (Test Access Port) compatible con el estándar IEEE 1149.1, resulta fundamental verificar el comportamiento del protocolo en todos los niveles de abstracción.
+
+El framework de verificación escolhido es Cocotb, el cual permite escribir bancos de pruebas en Python que interactúan directamente con el diseño Verilog mediante interfaces de simulación. Cocotb ofrece un modelo de programación basado en corrutinas asíncronas que resulta especialmente adecuado para la generación de secuencias JTAG en las que las señales de control (\texttt{tck}, \texttt{tms}, \texttt{tdi}) deben alternarse en patrones precisos.
+
+La verificación JTAG se estructura en dos capas distintas:
+
+\textbf{Capa de protocolo TAP:} Los bancos de pruebas \texttt{test\_tap\_fsm.py}, \texttt{test\_idcode.py} y \texttt{test\_bypass.py} verifican el comportamiento del controlador TAP aislado del resto del sistema. Estos pruebas utilizan como DUT el módulo \texttt{tb\_jtag\_tap}, el cual instancia únicamente el controlador JTAG sin el procesador.
+
+\textbf{Capa de depuración de sistema:} Los bancos de pruebas \texttt{test\_debug\_regs.py}, \texttt{test\_debug\_mem.py} y \texttt{test\_integration.py} verifican la integración del JTAG con el procesador completo. Estos pruebas utilizan como DUT el módulo \texttt{tb\_riscv\_core\_jtag}.
+
+Esta diferenciación permite un diagnóstico preciso: los defectos de protocolo se aíslan en la primera capa, mientras que los defectos de integración emergen en la segunda.
+
+\begin{table}[H]
+\centering
+\begin{tabular}{|l|p{6cm}|c|}
+\hline
+\textbf{Módulo de Prueba} & \textbf{Propiedad Verificada} & \textbf{DUT} \\
+\hline
+test\_tap\_fsm.py & Transiciones de estado IEEE 1149.1 & tb\_jtag\_tap \\
+\hline
+test\_idcode.py & Instrucción IDCODE (0x00000001) & tb\_jtag\_tap \\
+\hline
+test\_bypass.py & Registro de derivación de 1 bit & tb\_jtag\_tap \\
+\hline
+test\_debug\_regs.py & Acceso a GPR x0-x31, PC, STATUS & tb\_riscv\_core\_jtag \\
+\hline
+test\_debug\_mem.py & Lectura/escritura de memoria via JTAG & tb\_riscv\_core\_jtag \\
+\hline
+test\_integration.py & Sesión completa de depuración & tb\_riscv\_core\_jtag \\
+\hline
+\end{tabular}
+\caption{Estructura de verificación JTAG con Cocotb}
+\label{tab:CocotbTests}
+\end{table}
+
+La selección del DUT se realiza automáticamente en función del módulo de prueba, lo que permite una separación clara entre la verificación del componente y la verificación del sistema sin duplicación de código de testbench.
+
+\subsection{Entorno de Verificación pyUVM}
+\label{sec:pyUVM}
+
+El nivel más avanzado de verificación corresponde al testbench basado en la metodología UVM (Universal Verification Methodology), implementado mediante la biblioteca pyUVM y utilizando cocotb como puente de entrada hacia el simulador Verilog.
+
+La elección de pyUVM para este nivel responde a una filosofía diferente a la de Cocotb: mientras que Cocotb permite un desarrollo rápido de pruebas enfocadas en aspectos específicos del protocolo, pyUVM proporciona una estructura sistemática que facilita la extensión futura hacia metodologías de verificación coverage-driven.
+
+La arquitectura del testbench pyUVM se estructura siguiendo el flujo de verificación estándar de UVM:
+
+\begin{itemize}
+    \item \texttt{jtag\_transaction.py} — Define la clase \texttt{JtagTransaction}, que modela las transacciones JTAG como objetos que encapsulan los campos del registro de datos (opcode, dirección, datos de escritura y lectura).
+
+    \item \texttt{jtag\_sequence.py} — Define las secuencias de estímulos: \texttt{JtagIdcodeSeq} (lectura repetida de IDCODE), \texttt{JtagBypassSeq} (prueba de bypass con datos aleatorios) y \texttt{JtagFullSeq} (secuencia combinada que integra ambas).
+
+    \item \texttt{jtag\_driver.py} — Implementa el driver UVM que consume transacciones y las convierte en toggling de señales JTAG físicas (\texttt{tck}, \texttt{tms}, \texttt{tdi}).
+
+    \item \texttt{jtag\_monitor.py} — Implementa el monitor UVM que muestrea las señales JTAG y construye objetos \texttt{JtagTransaction} para su envío al scoreboard.
+
+    \item \texttt{jtag\_agent.py} — Encapsula el driver, el monitor y el secuenciador en un agente reutilizable.
+
+    \item \texttt{jtag\_scoreboard.py} — Recibe transacciones del monitor y verifica la corrección de las respuestas. Para IDCODE, verifica que el valor leído sea \texttt{0x00000001}. Para BYPASS, verifica que TDO retrase a TDI exactamente un ciclo de reloj.
+
+    \item \texttt{jtag\_env.py} — Compone el agente y el scoreboard en el entorno de verificación, estableciendo las conexiones de analysis ports.
+
+    \item \texttt{jtag\_test.py} — Define la clase \texttt{JtagTest}, que constituye la prueba UVM raíz. Su función es construir el entorno, configurar la referencia al DUT, iniciar la secuencia de estímulos y controlar las objeciones de simulación.
+\end{itemize}
+
+La diferencia fundamental entre los bancos de pruebas Cocotb y el entorno pyUVM radica en el modelo de verificación: los primeros siguen un enfoque directed-testing donde cada prueba verifica un escenario específico, mientras que pyUVM permite evolucionar hacia un enfoque coverage-driven donde las secuencias se generan guided por métricas de cobertura.
+
+\section{Resultados y Análisis de Cobertura}
+\label{sec:Results}
+
+\subsection{Resultados de Pruebas Unitarias}
+
+Los resultados de las pruebas unitarias demuestran una cobertura completa para todos los módulos verificados. Cada banco de pruebas ejerce exhaustivamente las entradas del módulo, alcanzando el 100\% de cobertura de línea y branching en la mayoría de los casos. Los módulos con lógica condicional compleja, como \texttt{alu\_control\_unit.v} y \texttt{control\_unit.v}, requieren un diseño cuidadoso de los vectores de prueba para alcanzar cobertura completa.
+
+\subsection{Resultados de Regresión ISA}
+
+La suite de regresión ISA constituye el indicador más fiable de la correctitud de la implementación del conjunto de instrucciones. Los resultados de la regresión demuestran un porcentaje de aprobación del 100\% para el conjunto de pruebas rv32ui, lo que valida que la implementación cumple con la especificación del subconjunto de instrucciones enteras de RV32I.
+
+\subsection{Resultados de Verificación JTAG}
+
+Las pruebas de protocolo JTAG, tanto en su formulación Cocotb como en el entorno pyUVM, demuestran una cobertura completa del espacio de verificación del protocolo. Las transiciones de estado del TAP, los registros IDCODE y BYPASS, y los registros de depuración del procesador son todos ejercitados y verificados.
+
+\section{Casos de Defectos Típicos}
+\label{sec:DefectCases}
+
+La verificación en múltiples niveles ha demostrado su efectividad en la detección y diagnóstico de defectos durante el desarrollo del proyecto. A continuación se describen dos casos representativos:
+
+\subsection{Caso 1: Error de Decodificación en Control Unit}
+Durante la ejecución de pruebas unitarias del módulo \texttt{control\_unit.v}, se identificó que las señales de control para la instrucción \texttt{SLTIU} (Set Less Than Immediate Unsigned) no se generaban correctamente. El defecto se manifestaba como una comparación signada cuando la instrucción requiere comparación sin signo.
+
+El defecto fue detectado en el primer nivel de verificación (unitario) y corregido mediante la adición del caso correspondiente en la tabla de decodificación. Este caso ejemplifica cómo las pruebas unitarias pueden detectar errores de lógica combinacional antes de que se propaguen a niveles superiores.
+
+\subsection{Caso 2: Condición de Carrera en Memoria de Datos}
+Las pruebas de integración identificaron un comportamiento anómalo en las operaciones de store cuando la señal de stall de depuración se activaba concurrentemente. La investigación reveló una condición de carrera en el módulo \texttt{data\_memory.v} donde la señal de escritura podía ser sobrescrita por el puerto de depuración en el mismo ciclo.
+
+Este defecto ejemplifica la necesidad de verificación a nivel de integración, dado que la condición de carrera emerge únicamente cuando múltiples puertos de acceso a memoria interactúan de manera específica.
+
+\chapterend{}

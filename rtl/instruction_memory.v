@@ -11,4 +11,10 @@ module instruction_memory(
 	wire [31:0] word_addr = (address - 32'h80000000) >> 2;
 	assign instruction = (word_addr < 8192) ? mem[word_addr] : 32'h00000013; // NOP (addi x0,x0,0)
 
+	// Initialize instruction memory from hex file
+	// Place test_hello.hex in the Vivado project root directory
+	initial begin
+		$readmemh("test_hello.mem", mem);
+	end
+
 endmodule

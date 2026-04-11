@@ -1,0 +1,213 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%% Documento LaTeX 																						%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Título:		Capítulo 2
+% Autor:  	Xiangmin Fan
+% Fecha:  	2026-03-10
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% !TEX root = A0.MiTFG.tex
+
+%\chapterbegin{Arquitectura del Conjunto de Instrucciones: RISC-V RV32I}
+\chapterbegin{Introducción y Especificación de la Arquitectura RISC-V}
+
+\label{chp:RV32I_ISA}
+%\minitoc
+
+\section{Introducción y Filosofía de Diseño}
+\label{sec:IntroFilosofia}
+% 这里可以写关于 RISC-V 的开源特性和模块化设计。
+
+El conjunto de instrucciones (ISA, por sus siglas en inglés) RISC-V representa un cambio de paradigma fundamental en la arquitectura de computadores. Desarrollado originalmente en la Universidad de California, Berkeley, RISC-V se distingue por ser una arquitectura de conjunto de instrucciones abierta y libre \cite{waterman2014riscv}. A diferencia de las arquitecturas propietarias tradicionales, como x86 o ARM, que requieren costosas licencias e imponen estrictos acuerdos de no divulgación, RISC-V permite a investigadores, académicos y empresas diseñar, implementar y comercializar procesadores sin restricciones legales ni pagos de regalías \cite{asanovic2014instruction}.
+
+La filosofía de diseño central de RISC-V se basa en dos pilares fundamentales: la \textbf{simplicidad} y la \textbf{modularidad} \cite{patterson2017riscv}. En lugar de acumular décadas de instrucciones heredadas que rara vez se utilizan, RISC-V adopta un enfoque clásico de Computadora con Conjunto de Instrucciones Reducido (RISC). Esto facilita la optimización del rendimiento a nivel de hardware mediante una segmentación (pipeline) eficiente y un decodificador de instrucciones altamente simplificado.
+
+El aspecto más innovador de su filosofía es su estricta naturaleza modular. La arquitectura se compone de un conjunto base de instrucciones enteras, denominado \textbf{RV32I} (para sistemas con un espacio de direcciones de 32 bits). Este módulo base es obligatorio y contiene las instrucciones suficientes para construir un compilador C completo y ejecutar sistemas operativos modernos \cite{waterman2014riscv}. 
+
+Sobre esta base indispensable, los arquitectos de hardware pueden añadir extensiones estándar opcionales de manera incremental, dependiendo de las necesidades específicas de la aplicación, tales como:
+\begin{itemize}
+    \item \textbf{M}: Multiplicación y división entera en hardware.
+    \item \textbf{A}: Instrucciones atómicas para sincronización multiprocesador.
+    \item \textbf{F} y \textbf{D}: Operaciones de punto flotante de precisión simple y doble.
+    \item \textbf{C}: Instrucciones comprimidas (de 16 bits) para mejorar la densidad del código y reducir el uso de memoria.
+\end{itemize}
+
+
+
+Esta modularidad evita la sobrecarga de hardware innecesario, permitiendo que un microcontrolador diseñado para sistemas embebidos de muy bajo consumo (implementando solo RV32I o RV32IC) comparta exactamente el mismo ecosistema de software y compiladores que un procesador de alto rendimiento. El presente proyecto se centrará exclusivamente en el diseño, implementación y verificación rigurosa de la variante base \textbf{RV32I}, la cual constituye el corazón ineludible de cualquier sistema RISC-V.
+
+
+
+% 描述 32 个寄存器 (x0-x31) 和程序计数器 (PC)。
+
+\section{Modelo del Programador}
+\label{sec:ModeloProgramador}
+
+El modelo del programador define el estado arquitectónico visible para el software, es decir, los recursos de hardware que un programador de lenguaje ensamblador o un compilador pueden manipular directamente. La arquitectura base RV32I se caracteriza por tener un estado arquitectónico extremadamente limpio y ortogonal. 
+
+Para un procesador de 32 bits (RV32I), este estado se compone fundamentalmente de dos elementos: un banco de registros de propósito general y el contador de programa.
+
+
+
+\subsection{Registros de Propósito General (GPR)}
+La arquitectura define un banco principal que contiene 32 registros de propósito general, denominados desde \texttt{x0} hasta \texttt{x31}. Cada uno de estos registros tiene una anchura de 32 bits. 
+
+El diseño de este banco de registros presenta una característica brillante y definitoria de la filosofía RISC-V: el registro \texttt{x0} (conocido como \textit{Zero Register}). El registro \texttt{x0} está conectado físicamente (hardwired) al valor constante cero. Cualquier intento de escritura en \texttt{x0} es simplemente ignorado por el hardware, y cualquier lectura siempre devolverá el valor 0. Esta decisión de diseño simplifica enormemente el conjunto de instrucciones. Por ejemplo, no se necesita una instrucción específica para mover datos entre registros (\texttt{MOV}); en su lugar, el ensamblador utiliza una instrucción de suma (\texttt{ADD}) donde uno de los operandos es \texttt{x0}.
+
+Aunque el hardware trata a los registros \texttt{x1} a \texttt{x31} de manera idéntica, la Interfaz Binaria de Aplicación (ABI, por sus siglas en inglés) de RISC-V asigna roles y nombres específicos a cada registro para estandarizar las llamadas a funciones y el uso de la memoria por parte de los compiladores de software (ver Tabla \ref{tab:registros_abi}).
+
+\begin{table}[h!]
+\centering
+\caption{Principales Registros RV32I y sus convenciones ABI}
+\label{tab:registros_abi}
+\begin{tabular}{|c|c|l|}
+\hline
+\textbf{Registro} & \textbf{Nombre ABI} & \textbf{Descripción / Uso Convencional} \\ \hline
+\texttt{x0}       & \texttt{zero}       & Valor constante 0 (Hardwired) \\ \hline
+\texttt{x1}       & \texttt{ra}         & Dirección de retorno (Return Address) \\ \hline
+\texttt{x2}       & \texttt{sp}         & Puntero de pila (Stack Pointer) \\ \hline
+\texttt{x3}       & \texttt{gp}         & Puntero global (Global Pointer) \\ \hline
+\texttt{x4}       & \texttt{tp}         & Puntero de hilo (Thread Pointer) \\ \hline
+\texttt{x5-x7}    & \texttt{t0-t2}      & Registros temporales \\ \hline
+\texttt{x8}       & \texttt{s0/fp}      & Registro guardado / Puntero de marco \\ \hline
+\texttt{x9}       & \texttt{s1}         & Registro guardado \\ \hline
+\texttt{x10-x11}  & \texttt{a0-a1}      & Argumentos de función / Valores de retorno \\ \hline
+\texttt{x12-x17}  & \texttt{a2-a7}      & Argumentos de función adicionales \\ \hline
+\texttt{x18-x27}  & \texttt{s2-s11}     & Registros guardados (Saved registers) \\ \hline
+\texttt{x28-x31}  & \texttt{t3-t6}      & Registros temporales adicionales \\ \hline
+\end{tabular}
+\end{table}
+
+\subsection{El Contador de Programa (PC)}
+El Contador de Programa, o \textit{Program Counter} (PC), es un registro especial independiente del banco de GPRs. En la arquitectura RV32I, el PC es un registro de 32 bits que contiene la dirección de memoria de la instrucción que se está ejecutando actualmente. 
+
+Dado que la memoria en RISC-V es direccionable por bytes (byte-addressable) y todas las instrucciones base de RV32I tienen una longitud fija de 32 bits (4 bytes), en el flujo secuencial normal de un programa, el hardware incrementará automáticamente el PC en 4 (\texttt{PC = PC + 4}) después de completar cada instrucción. Este flujo secuencial solo se altera mediante la ejecución de instrucciones de control de flujo, como saltos incondicionales (\texttt{JAL}, \texttt{JALR}) o ramificaciones condicionales (\texttt{BEQ}, \texttt{BNE}, etc.), las cuales cargan una nueva dirección calculada en el PC.
+
+
+% 详细说明 R, I, S, B, U, J 六种指令格式。
+\section{Formatos de Instrucción}
+\label{sec:FormatosInstruccion}
+
+Una de las características más destacadas de la arquitectura base RV32I es la regularidad de sus formatos de instrucción. Todas las instrucciones tienen una longitud fija de 32 bits y deben estar alineadas en memoria en límites de 4 bytes. Esta uniformidad simplifica enormemente el diseño del hardware, particularmente en las etapas de búsqueda (fetch) y decodificación (decode).
+
+La arquitectura define seis formatos básicos de instrucción: R, I, S, B, U y J. A continuación, en la Tabla \ref{tab:formatos_instruccion}, se presenta la estructura de bits de cada formato, donde el bit 0 es el menos significativo (LSB) y el bit 31 es el más significativo (MSB).
+
+
+
+\begin{table}[h!]
+\centering
+\caption{Formatos de instrucción base RV32I y asignación de bits}
+\label{tab:formatos_instruccion}
+\resizebox{\textwidth}{!}{
+\begin{tabular}{|c|c|c|c|c|c|c|c|}
+\hline
+\textbf{Formato} & \textbf{31 \dots 25} & \textbf{24 \dots 20} & \textbf{19 \dots 15} & \textbf{14 \dots 12} & \textbf{11 \dots 7} & \textbf{6 \dots 0} & \textbf{Propósito Principal} \\ \hline
+\textbf{R} & \texttt{funct7} & \texttt{rs2} & \texttt{rs1} & \texttt{funct3} & \texttt{rd} & \texttt{opcode} & Operaciones Registro-Registro \\ \hline
+\textbf{I} & \multicolumn{2}{c|}{\texttt{imm[11:0]}} & \texttt{rs1} & \texttt{funct3} & \texttt{rd} & \texttt{opcode} & Cargas (Loads) e Inmediatos cortos \\ \hline
+\textbf{S} & \texttt{imm[11:5]} & \texttt{rs2} & \texttt{rs1} & \texttt{funct3} & \texttt{imm[4:0]} & \texttt{opcode} & Almacenamiento (Stores) \\ \hline
+\textbf{B} & \texttt{imm[12|10:5]} & \texttt{rs2} & \texttt{rs1} & \texttt{funct3} & \texttt{imm[4:1|11]} & \texttt{opcode} & Saltos Condicionales (Branches) \\ \hline
+\textbf{U} & \multicolumn{4}{c|}{\texttt{imm[31:12]}} & \texttt{rd} & \texttt{opcode} & Inmediatos largos (Upper Inmediates) \\ \hline
+\textbf{J} & \multicolumn{4}{c|}{\texttt{imm[20|10:1|11|19:12]}} & \texttt{rd} & \texttt{opcode} & Saltos Incondicionales (Jumps) \\ \hline
+\end{tabular}
+}
+\end{table}
+
+\subsection{Descripción de los Campos de Instrucción}
+Para minimizar la complejidad del hardware, RISC-V mantiene los campos de los registros en la misma posición en todos los formatos que los utilizan. Los campos fundamentales son:
+
+\begin{itemize}
+    \item \textbf{\texttt{opcode} (bits 6:0):} El código de operación principal. Indica la categoría básica de la instrucción y, junto con \texttt{funct3} y \texttt{funct7}, determina la operación exacta a realizar.
+    \item \textbf{\texttt{rd} (bits 11:7):} La dirección del registro de destino (Destination Register) donde se escribirá el resultado.
+    \item \textbf{\texttt{rs1} (bits 19:15) y \texttt{rs2} (bits 24:20):} Las direcciones de los registros fuente 1 y 2 (Source Registers), respectivamente. Al estar siempre en las mismas posiciones, el procesador puede comenzar a leer los registros simultáneamente mientras decodifica el resto de la instrucción.
+    \item \textbf{\texttt{funct3} (bits 14:12) y \texttt{funct7} (bits 31:25):} Códigos de función adicionales que actúan como extensiones del \texttt{opcode} para especificar la operación exacta dentro de una categoría (por ejemplo, diferenciar entre una suma y una resta en el formato R).
+    \item \textbf{\texttt{imm}:} Valores inmediatos codificados dentro de la propia instrucción. 
+\end{itemize}
+
+\subsection{Generación de Inmediatos y Extensión de Signo}
+Un detalle arquitectónico crucial de RV32I es la manipulación de los valores inmediatos. Dado que los inmediatos en los formatos I, S y B son de 12 bits, pero el procesador opera con datos de 32 bits, estos valores deben ser extendidos en signo (\textit{sign-extended}) antes de enviarse a la Unidad Aritmético Lógica (ALU). 
+
+RISC-V diseña de forma deliberada que el bit de signo de todos los inmediatos (independientemente del formato) se encuentre siempre en el bit más significativo de la instrucción (el bit 31). Esta decisión permite que el circuito generador de inmediatos (\textit{Immediate Generator}) en el hardware propague el bit de signo de manera inmediata, acelerando la ruta crítica del procesador. El reordenamiento de los bits en los formatos B y J está optimizado matemáticamente para reducir la cantidad de multiplexores lógicos necesarios en la implementación, aunque parezca desordenado a nivel de software.
+
+
+
+% 按照算术逻辑、访存、跳转等功能对指令集进行分类。
+\section{Categorías de Instrucciones}
+\label{sec:CategoriasInstrucciones}
+
+El conjunto base RV32I se compone de exactamente 40 instrucciones únicas. Esta cantidad excepcionalmente baja es un testimonio de la filosofía RISC, diseñada para minimizar la complejidad del hardware en la etapa de decodificación. A pesar de su reducido número, estas instrucciones son suficientes para emular cualquier otra operación compleja a través de software \cite{patterson2017riscv}.
+
+Las instrucciones de RV32I se pueden agrupar funcionalmente en cuatro categorías principales: operaciones computacionales (aritméticas y lógicas), transferencias de control (saltos y ramificaciones), acceso a memoria (cargas y almacenamientos) e instrucciones de entorno y sistema.
+
+
+
+\subsection{Instrucciones Computacionales (Aritméticas y Lógicas)}
+Estas instrucciones realizan operaciones matemáticas o lógicas bit a bit. Todas leen sus operandos desde el banco de registros (o de un valor inmediato) y escriben el resultado de vuelta en un registro de destino (\texttt{rd}), sin acceder nunca a la memoria principal \cite{waterman2014riscv}. Se subdividen en dos tipos según el origen de sus operandos:
+
+\begin{itemize}
+    \item \textbf{Registro-Registro (Formato R):} Operan sobre dos registros fuente (\texttt{rs1} y \texttt{rs2}). Incluyen suma y resta (\texttt{ADD}, \texttt{SUB}), operaciones lógicas booleanas (\texttt{AND}, \texttt{OR}, \texttt{XOR}), y desplazamientos de bits. Un detalle arquitectónico importante es la distinción entre el desplazamiento lógico a la derecha (\texttt{SRL}), que inserta ceros en los bits más significativos, y el desplazamiento aritmético a la derecha (\texttt{SRA}), que replica el bit de signo para preservar valores negativos.
+    \item \textbf{Registro-Inmediato (Formato I):} Operan sobre un registro fuente (\texttt{rs1}) y un valor constante de 12 bits extendido en signo incrustado en la propia instrucción. Las instrucciones como \texttt{ADDI}, \texttt{ANDI}, u \texttt{ORI} son fundamentales para el manejo de bucles y constantes. Notablemente, no existe una instrucción \texttt{SUBI} (resta inmediata), ya que el ensamblador simplemente utiliza \texttt{ADDI} con un valor inmediato negativo, ahorrando así un código de operación (\textit{opcode}) en el diseño del procesador.
+\end{itemize}
+
+Además de las operaciones básicas, RISC-V incluye instrucciones de comparación (\texttt{SLT}, \texttt{SLTU}, \texttt{SLTI}, \texttt{SLTIU}) que escriben un 1 en el registro de destino si el primer operando es menor que el segundo, y un 0 en caso contrario.
+
+\subsection{Instrucciones de Acceso a Memoria (Load y Store)}
+RISC-V es estrictamente una arquitectura de "carga y almacenamiento" (\textit{load-store architecture}). Esto significa que las únicas instrucciones capaces de interactuar con la memoria principal son las de carga (\textit{Load}) y almacenamiento (\textit{Store}) \cite{waterman2014riscv}. Las operaciones aritméticas nunca operan directamente sobre direcciones de memoria.
+
+\begin{itemize}
+    \item \textbf{Cargas (Formato I):} Copian datos de la memoria a un registro. RV32I soporta cargas de palabras completas de 32 bits (\texttt{LW}), medias palabras de 16 bits (\texttt{LH}) y bytes de 8 bits (\texttt{LB}). Al cargar valores más pequeños que 32 bits, la arquitectura ofrece variantes que realizan extensión de signo (\texttt{LH}, \texttt{LB}) para valores con signo, o extensión de ceros (\texttt{LHU}, \texttt{LBU}) para valores sin signo (unsigned).
+    \item \textbf{Almacenamientos (Formato S):} Copian datos de un registro a la memoria. Incluyen almacenar palabra (\texttt{SW}), media palabra (\texttt{SH}) y byte (\texttt{SB}).
+\end{itemize}
+El cálculo de la dirección de memoria efectiva se realiza sumando el valor contenido en el registro base (\texttt{rs1}) más un desplazamiento (\textit{offset}) inmediato de 12 bits con signo. 
+
+\subsection{Instrucciones de Control de Flujo (Saltos y Ramificaciones)}
+Estas instrucciones alteran el flujo de ejecución secuencial normal del programa modificando el Contador de Programa (PC). 
+
+Una desviación significativa de RISC-V respecto a arquitecturas más antiguas (como x86 o ARM) es la \textbf{ausencia de códigos de condición o banderas (flags)} de estado global (como el flag de Acarreo o de Cero) \cite{patterson2017riscv}. RISC-V evalúa las condiciones de salto comparando dos registros directamente dentro de la misma instrucción.
+
+\begin{itemize}
+    \item \textbf{Saltos Condicionales o Ramificaciones (Formato B):} Evalúan una condición entre \texttt{rs1} y \texttt{rs2}. Si es verdadera, suman un offset inmediato (múltiplo de 2) al PC actual (\texttt{PC = PC + imm}). Las condiciones soportadas son: igualdad (\texttt{BEQ}, \texttt{BNE}) y magnitud con o sin signo (\texttt{BLT}, \texttt{BGE}, \texttt{BLTU}, \texttt{BGEU}).
+    \item \textbf{Saltos Incondicionales (Formatos J e I):} Saltan a una dirección calculada sin evaluar ninguna condición, siendo esenciales para las llamadas a funciones. La instrucción \texttt{JAL} (\textit{Jump and Link}) usa un inmediato largo para calcular el salto relativo al PC, mientras que \texttt{JALR} (\textit{Jump and Link Register}) suma un offset a un registro base. Ambas guardan la dirección de retorno (\texttt{PC + 4}) en el registro destino (\texttt{rd}), típicamente \texttt{x1} (\texttt{ra}), para poder volver de la función subrutina \cite{waterman2014riscv}.
+\end{itemize}
+
+\subsection{Instrucciones de Entorno y Sistema}
+Aunque son de uso menos frecuente en programas básicos sin sistema operativo (bare-metal), RV32I define instrucciones para interactuar con el entorno de ejecución. La instrucción \texttt{ECALL} (Environment Call) se utiliza para realizar llamadas al sistema (syscalls) delegando el control a un nivel de privilegio superior (como un sistema operativo), mientras que \texttt{EBREAK} (Environment Breakpoint) transfiere el control a un depurador (debugger).
+
+
+
+% 解释汇编器如何简化常用操作（如 mv, li, nop）。
+\section{Pseudo-instrucciones}
+\label{sec:Pseudoinstrucciones}
+
+Uno de los principios rectores de RISC-V es mantener la arquitectura del conjunto de instrucciones (ISA) lo más pequeña y simple posible para minimizar la complejidad del hardware. Sin embargo, escribir código en ensamblador utilizando únicamente las 40 instrucciones base de RV32I puede resultar tedioso y propenso a errores para los programadores. Para resolver esta dicotomía entre la simplicidad del hardware y la conveniencia del software, RISC-V hace un uso extensivo de \textit{pseudo-instrucciones}.
+
+Las pseudo-instrucciones son alias o mnemónicos de conveniencia que el ensamblador reconoce, pero que no existen físicamente en el conjunto de instrucciones del procesador. Cuando el ensamblador procesa el código fuente, traduce automáticamente cada pseudo-instrucción en una o más instrucciones base equivalentes antes de generar el código máquina final \cite{waterman2014riscv}.
+
+Esta estrategia permite que el código ensamblador sea más legible e intuitivo sin añadir ni un solo transistor extra al decodificador del procesador. La Tabla \ref{tab:pseudo_instrucciones} ilustra algunas de las pseudo-instrucciones más comunes y su traducción exacta a la arquitectura base RV32I.
+
+\begin{table}[h!]
+\centering
+\caption{Ejemplos de Pseudo-instrucciones comunes y su traducción a RV32I}
+\label{tab:pseudo_instrucciones}
+\begin{tabular}{|l|l|l|}
+\hline
+\textbf{Pseudo-instrucción} & \textbf{Traducción a RV32I base} & \textbf{Descripción} \\ \hline
+\texttt{nop} & \texttt{addi x0, x0, 0} & No operación (No Operation) \\ \hline
+\texttt{mv rd, rs} & \texttt{addi rd, rs, 0} & Copiar registro (Move) \\ \hline
+\texttt{not rd, rs} & \texttt{xori rd, rs, -1} & Inversión lógica a nivel de bits \\ \hline
+\texttt{neg rd, rs} & \texttt{sub rd, x0, rs} & Negación matemática (Complemento a 2) \\ \hline
+\texttt{j offset} & \texttt{jal x0, offset} & Salto incondicional \\ \hline
+\texttt{ret} & \texttt{jalr x0, 0(x1)} & Retorno de subrutina \\ \hline
+\texttt{beqz rs, offset} & \texttt{beq rs, x0, offset} & Saltar si es igual a cero \\ \hline
+\texttt{bnez rs, offset} & \texttt{bne rs, x0, offset} & Saltar si no es igual a cero \\ \hline
+\end{tabular}
+\end{table}
+
+\subsection{Carga de Valores Constantes: \texttt{li} y \texttt{la}}
+Dos de las pseudo-instrucciones más potentes e indispensables proporcionadas por el ensamblador de RISC-V son \texttt{li} (Load Immediate) y \texttt{la} (Load Address).
+
+\begin{itemize}
+    \item \textbf{\texttt{li rd, immediate}:} Dado que las instrucciones tipo I solo pueden cargar inmediatos de 12 bits, cargar un valor constante arbitrario de 32 bits requeriría que el programador calcule manualmente la parte alta y baja del número. La pseudo-instrucción \texttt{li} delega este trabajo al ensamblador, el cual genera automáticamente una secuencia de instrucciones (típicamente \texttt{lui} seguido de \texttt{addi}) para componer el valor completo de 32 bits en el registro destino.
+    \item \textbf{\texttt{la rd, symbol}:} En el código fuente, las direcciones de las variables o etiquetas no se conocen hasta la fase de enlazado (\textit{linking}). \texttt{la} permite al programador cargar la dirección de memoria de una etiqueta, y el \textit{linker} se encarga de reemplazarla por la secuencia correcta de instrucciones (frecuentemente \texttt{auipc} seguido de \texttt{addi}) para materializar la dirección efectiva calculada en relación al PC actual.
+\end{itemize}
+
+
+\chapterend{}

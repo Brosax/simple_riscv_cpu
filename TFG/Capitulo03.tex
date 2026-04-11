@@ -1,0 +1,116 @@
+ % !TEX root = A0.MiTFG.tex
+
+
+\chapterbegin{Diseño de la Microarquitectura e Implementación RTL}
+\label{chp:DisenoRTL}
+%\minitoc
+
+% 概述单周期处理器的整体架构，展示顶级数据通路图。
+\section{Visión General del Camino de Datos (Datapath)}
+\label{sec:DatapathGeneral}
+
+El diseño de la microarquitectura de un procesador define cómo se implementa en hardware la Arquitectura del Conjunto de Instrucciones (ISA) descrita en la Parte I. Para este proyecto, se ha optedo por implementar una microarquitectura \textbf{monociclo} (single-cycle) para el núcleo base RV32I. En este enfoque, la ejecución completa de cualquier instrucción —desde su lectura en memoria hasta la escritura del resultado— se realiza en un único ciclo de reloj. Esto implica que el Ciclo por Instrucción (CPI) es estrictamente igual a 1 para todas las operaciones.
+
+Aunque un diseño monociclo no es el más eficiente en términos de frecuencia máxima de reloj (ya que el período del reloj debe ser lo suficientemente largo para acomodar la ruta crítica de la instrucción más lenta, típicamente \texttt{LW}), proporciona una base conceptual y funcional extremadamente sólida. Representa el punto de partida ideal para validar la exactitud de la lógica de control antes de introducir técnicas más avanzadas y propensas a riesgos como la segmentación (\textit{pipelining}).
+
+El camino de datos (\textit{datapath}) comprende todos los elementos de hardware interconectados que procesan y enrutan la información. Conceptualmente, el flujo de señales para cualquier instrucción RV32I atraviesa cinco etapas funcionales fundamentales dentro de ese mismo ciclo de reloj:
+
+\begin{enumerate}
+    \item \textbf{Búsqueda (Fetch):} El registro del Contador de Programa (PC) provee la dirección actual para extraer la instrucción de 32 bits desde la Memoria de Instrucciones. Simultáneamente, un sumador dedicado calcula la dirección secuencial de la siguiente instrucción ($PC + 4$).
+    \item \textbf{Decodificación (Decode):} La instrucción recuperada se divide en sus campos de bits correspondientes (\texttt{opcode}, \texttt{funct3}, \texttt{rs1}, \texttt{rd}, etc.). Se leen los operandos del Banco de Registros de forma asíncrona, y el Generador de Inmediatos produce la constante de 32 bits extendida en signo requerida según el formato de la instrucción.
+    \item \textbf{Ejecución (Execute):} La Unidad Aritmético Lógica (ALU) entra en acción. Realiza la operación matemática, lógica, o el cálculo de la dirección base de memoria, dependiendo estrictamente de las señales emitidas por la Unidad de Control.
+    \item \textbf{Memoria (Memory):} Si la instrucción en curso es de tipo acceso (\texttt{Load} o \texttt{Store}), se interactúa con la Memoria de Datos utilizando la dirección efectiva calculada previamente por la ALU. Para las instrucciones aritméticas, esta fase de hardware es esencialmente transparente.
+    \item \textbf{Escritura (Write-Back):} El resultado final del ciclo, que puede provenir de la salida de la ALU o de los datos extraídos de la Memoria de Datos, se enruta mediante un multiplexor y se escribe de vuelta en el registro destino (\texttt{rd}) en el flanco de subida del siguiente ciclo de reloj.
+\end{enumerate}
+
+
+
+La Figura \ref{fig:datapath_monociclo} ilustra la interconexión a nivel de bloques lógicos de todos estos componentes. El flujo de información está orquestado por múltiples multiplexores (MUX) que seleccionan las rutas correctas en base a las señales de control. En las secciones subsiguientes de este capítulo, se detallará el diseño a nivel de Transferencia de Registros (RTL) utilizando Verilog para cada uno de estos módulos críticos.
+
+\begin{figure}[h!]
+    \centering
+    % \includegraphics[width=0.9\textwidth]{ruta/a/tu/imagen_datapath.png}
+    \caption{Diagrama de bloques general del camino de datos monociclo para la arquitectura RISC-V RV32I.}
+    \label{fig:datapath_monociclo}
+\end{figure}
+
+
+
+
+Este capítulo detalla la implementación a nivel de transferencia de registros (RTL) del procesador RISC-V (RV32I) desarrollado en este proyecto. Se ha adoptado una microarquitectura de camino de datos monociclo (\textit{single-cycle datapath}), caracterizada por su lógica clara y la ausencia de riesgos de datos (data hazards) o de control. El diseño RTL utiliza un enfoque modular estricto, separando el camino de datos de la ruta de control, integrados mediante el módulo superior \texttt{riscv\_core.v}.
+
+\section{Visión General y Top-Level (\texttt{riscv\_core.v})}
+\label{sec:TopLevel}
+
+El módulo \texttt{riscv\_core} constituye la entidad principal del procesador. En lugar de implementar complejas máquinas de estado interno, utiliza un modelado estructural instanciando todas las unidades funcionales y conectándolas mediante buses de lógica combinacional (\texttt{wire}).
+
+
+
+En este nivel superior, el flujo de ejecución de una instrucción sigue cinco etapas lógicas fundamentales en un solo ciclo de reloj:
+\begin{enumerate}
+    \item \textbf{Búsqueda (Fetch):} El registro del contador de programa (\texttt{pc\_register}) emite la dirección actual. La memoria de instrucciones (\texttt{instruction\_memory}) responde asíncronamente entregando la instrucción de 32 bits.
+    \item \textbf{Decodificación (Decode):} La instrucción se segmenta en código de operación (\texttt{opcode}), índices de registros (\texttt{rs1}, \texttt{rs2}, \texttt{rd}) y códigos de función (\texttt{funct3}, \texttt{funct7}). La unidad de control genera las señales globales y el generador de inmediatos realiza la extensión de signo.
+    \item \textbf{Ejecución (Execute):} La Unidad Aritmético Lógica (ALU) procesa los datos leídos de los registros o el inmediato extendido, basándose en las señales de control de la ALU.
+    \item \textbf{Memoria (Memory):} Utilizando la dirección calculada por la ALU, la lógica de Entrada/Salida Mapeada en Memoria (MMIO) determina si la operación accede a la memoria RAM de datos o a un dispositivo periférico.
+    \item \textbf{Escritura (Write-Back):} Un multiplexor evalúa señales como \texttt{mem\_to\_reg} y \texttt{jump} para decidir si el dato a escribir en el registro destino (\texttt{rd}) proviene de la memoria, del resultado de la ALU, o es la dirección de retorno de un salto.
+\end{enumerate}
+
+\section{Ruta de Control: Mecanismo de Decodificación de Dos Niveles}
+\label{sec:ControlPath}
+
+Para reducir la complejidad lógica y mejorar la mantenibilidad del código, la ruta de control implementa una estrategia de decodificación en dos etapas.
+
+
+
+\subsection{Unidad de Control Principal (\texttt{control\_unit.v})}
+Esta unidad es un circuito puramente combinacional cuya única entrada son los 7 bits menos significativos de la instrucción (\texttt{opcode}). Mediante una estructura \texttt{case}, determina el formato de la instrucción (R, I, S, B, U, J) y emite señales de control de alto nivel:
+\begin{itemize}
+    \item \textbf{Enrutamiento:} \texttt{alu\_src} (origen del segundo operando) y \texttt{mem\_to\_reg} (origen del dato de escritura).
+    \item \textbf{Habilitación:} \texttt{reg\_write} (escritura en registro), \texttt{mem\_read} y \texttt{mem\_write} (acceso a memoria).
+    \item \textbf{Flujo:} \texttt{branch} y \texttt{jump}.
+    \item \textbf{Pre-decodificación ALU:} Una señal de 2 bits (\texttt{alu\_op}) que transmite la categoría general de la instrucción al siguiente nivel.
+\end{itemize}
+
+\subsection{Unidad de Control de la ALU (\texttt{alu\_control\_unit.v})}
+El segundo nivel de decodificación recibe la señal \texttt{alu\_op}, junto con \texttt{funct3} y el bit 30 de la instrucción (\texttt{funct7\_bit5}). Su función es emitir el comando exacto de 4 bits para la ALU. Por ejemplo, distingue entre suma (\texttt{ADD}) y resta (\texttt{SUB}) analizando el bit 30, ya que ambas comparten el mismo \texttt{opcode} y \texttt{funct3} en el formato R.
+
+\section{Unidades de Computación y Procesamiento de Datos}
+\label{sec:ComputeUnits}
+
+\subsection{Unidad Aritmético Lógica (\texttt{alu.v})}
+La ALU es el núcleo computacional, soportando 10 operaciones fundamentales requeridas por la especificación RV32I:
+\begin{itemize}
+    \item \textbf{Aritméticas:} Suma y resta.
+    \item \textbf{Lógicas:} AND, OR, XOR.
+    \item \textbf{Desplazamientos:} Lógico a la izquierda (SLL), lógico a la derecha (SRL), aritmético a la derecha (SRA).
+    \item \textbf{Comparaciones:} Con signo (SLT) y sin signo (SLTU).
+\end{itemize}
+
+
+
+La ALU se implementa mediante un esquema de multiplexación paralela. Destaca la generación de la bandera \texttt{zero}, vital para evaluar condiciones de igualdad en instrucciones de ramificación (por ejemplo, en un \texttt{BEQ}, la ALU ejecuta una resta y si \texttt{zero} es 1, la ramificación se toma).
+
+\subsection{Generador de Inmediatos (\texttt{immediate\_generator.v})}
+Debido a que RISC-V dispersa los bits de los valores inmediatos para mantener fijas las posiciones de los registros fuente/destino, este módulo se encarga de extraer, reordenar y concatenar estos bits dispersos en un operando sólido de 32 bits. Se aplica extensión de signo aritmética replicando el bit 31 de la instrucción original para todas las operaciones con signo.
+
+\section{Memoria y Entrada/Salida Mapeada en Memoria (MMIO)}
+\label{sec:MMIO}
+
+Una característica arquitectónica distintiva de este diseño es la implementación de un mapa de memoria (MMIO). El espacio de direcciones está fragmentado, por lo que no todos los accesos se dirigen a la RAM física.
+
+En el módulo \texttt{riscv\_core.v}, un decodificador de direcciones ligero evalúa el resultado de la ALU. Si la dirección de un \texttt{LW} o \texttt{SW} cae en rangos periféricos específicos (por ejemplo, \texttt{0xFFFF0000} para un Timer, o \texttt{0xFFFF0010} para GPIO), se activan las señales de habilitación del periférico correspondiente y se enmascara la memoria principal.
+
+
+
+De particular importancia es la dirección \texttt{0x80001000}, codificada físicamente como el puerto \texttt{tohost}. Este es un estándar de facto en el ecosistema RISC-V que permite al núcleo interactuar con entornos de simulación externos (como \texttt{riscv-tests}) para reportar el éxito o fracaso de las pruebas de cumplimiento.
+
+\section{Mecanismos de Salto y Ramificación}
+\label{sec:BranchJump}
+
+La lógica de actualización del Contador de Programa (PC) rige el flujo de control. Por defecto, avanza 4 bytes secuencialmente (\texttt{PC + 4}). Sin embargo, este comportamiento se altera ante:
+\begin{itemize}
+    \item \textbf{Ramificaciones Condicionales (Branches):} Para instrucciones como \texttt{BEQ} o \texttt{BLT}, el salto depende tanto de la señal \texttt{branch} de la unidad de control como del estado de la ALU (bandera \texttt{zero} o bit menos significativo de la comparación). El módulo superior cruza estas señales con el campo \texttt{funct3} para evaluar si la condición se cumple (\texttt{take\_branch}).
+    \item \textbf{Saltos Incondicionales (JAL / JALR):} Calculan la dirección destino y, simultáneamente, guardan la dirección de retorno (\texttt{PC + 4}) en el registro destino (habitualmente \texttt{x1/ra}) para facilitar el retorno de subrutinas. \texttt{JALR} aplica además un enmascaramiento al bit menos significativo para garantizar la alineación de la instrucción.
+\end{itemize}
+
+\chapterend{}

@@ -1,0 +1,28 @@
+# Build artifacts
+build/
+*.vvp
+*.vcd
+*.vpp
+*.log
+
+# Simulation intermediate files
+inst.mem
+test_program.txt
+
+# Generated test files (rebuilt by make gen-mem)
+tests/isa/generated/
+tests/isa/mem/
+
+# Python
+__pycache__/
+*.pyc
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+*.swp
+*.swo
+*~
+.vscode/

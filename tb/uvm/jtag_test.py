@@ -9,15 +9,22 @@ from pyuvm import uvm_test, ConfigDB, uvm_root
 from jtag_env      import JtagEnv
 from jtag_sequence import JtagFullSeq
 
+# run_test() 将 DUT handle 存于此，供 build_phase 使用。
+# 原因：uvm_root().run_test() 默认 keep_singletons=False，
+# 会在启动前清空所有单例（包括 ConfigDB），
+# 因此必须在 build_phase 内（singletons 重建后）再写入。
+_dut = None
+
 
 class JtagTest(uvm_test):
     """
     UVM Test：
-      1. build_phase — 创建验证环境
+      1. build_phase — 注册 DUT 并创建验证环境
       2. run_phase   — 启动测试序列，完成后 drop_objection 结束仿真
     """
 
     def build_phase(self):
+        ConfigDB().set(None, "*", "DUT", _dut)
         self.env = JtagEnv("env", self)
 
     async def run_phase(self):
@@ -39,9 +46,10 @@ class JtagTest(uvm_test):
 async def run_test(dut):
     """
     cocotb test 入口：
-      1. 将 DUT handle 存入 ConfigDB，供所有 UVM 组件通过
-         ConfigDB().get(self, "", "DUT") 获取
-      2. 调用 uvm_root().run_test() 启动 UVM 框架（依次执行所有 phase）
+      将 DUT handle 存入模块变量，再启动 UVM 框架。
+      DUT 的 ConfigDB 注册推迟到 JtagTest.build_phase，
+      避免被 run_test 的 singleton 清理覆盖。
     """
-    ConfigDB().set(None, "*", "DUT", dut)
+    global _dut
+    _dut = dut
     await uvm_root().run_test("JtagTest")

@@ -1,1 +1,0 @@
-test/isa/hex/rv32ui-p-simple.hex

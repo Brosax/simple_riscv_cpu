@@ -6,10 +6,13 @@ jtag_sequence.py — uvm_sequence
   JtagBypassSeq — BYPASS 测试：全零 + 随机数据，验证一拍延迟透传
   JtagFullSeq   — 综合序列：先跑 IDCODE，再跑 BYPASS
 """
+import logging
 import random
 from pyuvm import uvm_sequence
 
 from jtag_transaction import JtagTransaction, IR_IDCODE, IR_BYPASS
+
+logger = logging.getLogger(__name__)
 
 
 class JtagIdcodeSeq(uvm_sequence):
@@ -30,7 +33,7 @@ class JtagIdcodeSeq(uvm_sequence):
             tr.dr_bits = 32        # IDCODE 寄存器为 32 位
             await self.start_item(tr)
             await self.finish_item(tr)
-            self.logger.info(f"[IDCODE #{i}] dr_out=0x{tr.dr_out:08x}")
+            logger.info(f"[IDCODE #{i}] dr_out=0x{tr.dr_out:08x}")
 
 
 class JtagBypassSeq(uvm_sequence):
@@ -51,7 +54,7 @@ class JtagBypassSeq(uvm_sequence):
         tr0.dr_bits = 8
         await self.start_item(tr0)
         await self.finish_item(tr0)
-        self.logger.info(f"[BYPASS 全零] dr_out=0x{tr0.dr_out:02x}")
+        logger.info(f"[BYPASS 全零] dr_out=0x{tr0.dr_out:02x}")
 
         # 测试 2：随机数据（16 位）
         tr1 = JtagTransaction("bypass_rand")
@@ -60,7 +63,7 @@ class JtagBypassSeq(uvm_sequence):
         tr1.dr_bits = 16
         await self.start_item(tr1)
         await self.finish_item(tr1)
-        self.logger.info(
+        logger.info(
             f"[BYPASS 随机] dr_in=0x{tr1.dr_in:04x} dr_out=0x{tr1.dr_out:04x}"
         )
 
@@ -74,12 +77,12 @@ class JtagFullSeq(uvm_sequence):
         super().__init__(name)
 
     async def body(self):
-        self.logger.info("=== 开始 IDCODE 序列 ===")
+        logger.info("=== 开始 IDCODE 序列 ===")
         idcode_seq = JtagIdcodeSeq("idcode_seq", repeat_cnt=3)
         await idcode_seq.start(self.sequencer)
 
-        self.logger.info("=== 开始 BYPASS 序列 ===")
+        logger.info("=== 开始 BYPASS 序列 ===")
         bypass_seq = JtagBypassSeq("bypass_seq")
         await bypass_seq.start(self.sequencer)
 
-        self.logger.info("=== 综合序列完成 ===")
+        logger.info("=== 综合序列完成 ===")
