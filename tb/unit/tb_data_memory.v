@@ -44,6 +44,7 @@ module tb_data_memory;
     initial clk = 0;
     always #5 clk = ~clk;
 
+    // Note: read_data is synchronous - requires a clock edge after write to get new value
     task check_read;
         input [31:0] addr;
         input [2:0] f3;
@@ -53,7 +54,8 @@ module tb_data_memory;
             address = addr;
             funct3 = f3;
             write_enable = 0;
-            #1; // Let combinational read logic settle
+            @(posedge clk);  // Wait for clock edge — synchronous read needs this
+            #1;
             if (read_data === expected_data) begin
                 $display("PASS: %s", test_name);
             end else begin
@@ -71,7 +73,7 @@ module tb_data_memory;
             write_data = data;
             funct3 = f3;
             write_enable = 1;
-            @(posedge clk); #1; // Wait for clock edge, then 1ns settling
+            @(posedge clk);  // Write on clock edge
             write_enable = 0;
         end
     endtask
@@ -85,19 +87,13 @@ module tb_data_memory;
         check_read(32'd100, FUNCT3_LW, 32'hDEADBEEF, "SW/LW Word");
 
         // --- Test 2: Half-word (SH/LH/LHU) ---
-        // Write 0x1234ABCD, but only 0xABCD should be stored
         write_mem(32'd200, 32'h1234ABCD, FUNCT3_SH);
-        // Test LH (sign-extended)
         check_read(32'd200, FUNCT3_LH, 32'hFFFFABCD, "SH/LH Half-word (signed)");
-        // Test LHU (zero-extended)
         check_read(32'd200, FUNCT3_LHU, 32'h0000ABCD, "SH/LHU Half-word (unsigned)");
 
         // --- Test 3: Byte (SB/LB/LBU) ---
-        // Write 0x...88, but only 0x88 should be stored
         write_mem(32'd300, 32'hFFFFFF88, FUNCT3_SB);
-        // Test LB (sign-extended)
         check_read(32'd300, FUNCT3_LB, 32'hFFFFFF88, "SB/LB Byte (signed)");
-        // Test LBU (zero-extended)
         check_read(32'd300, FUNCT3_LBU, 32'h00000088, "SB/LBU Byte (unsigned)");
 
         // --- Test 4: Overwriting data ---

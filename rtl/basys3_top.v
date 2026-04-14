@@ -11,7 +11,7 @@ module basys3_top(
     input wire [31:0] debug_mem_addr,
     input wire debug_mem_write,
     input wire [31:0] debug_mem_wdata,
-    input wire [1:0] debug_mem_wstrb,
+    input wire [3:0] debug_mem_wstrb,
     // UART
     output wire uart_tx,
     input wire uart_rx,
@@ -68,7 +68,7 @@ module basys3_top(
         .debug_mem_addr(32'd0),
         .debug_mem_write(1'b0),
         .debug_mem_wdata(32'd0),
-        .debug_mem_wstrb(2'd0),
+        .debug_mem_wstrb(4'd0),
         .debug_mem_rdata()
     );
 

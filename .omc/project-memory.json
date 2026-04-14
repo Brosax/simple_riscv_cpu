@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "lastScanned": 1775916827429,
+  "lastScanned": 1776096642973,
   "projectRoot": "C:\\Users\\xiangmin\\Desktop\\TFG\\simple_riscv_cpu",
   "techStack": {
     "languages": [
@@ -49,7 +49,7 @@
       "path": "build",
       "purpose": "Build output",
       "fileCount": 13,
-      "lastAccessed": 1775916827371,
+      "lastAccessed": 1776096642931,
       "keyFiles": [
         "tb_alu.vvp",
         "tb_alu_control_unit.vvp",
@@ -62,7 +62,7 @@
       "path": "constraints",
       "purpose": null,
       "fileCount": 2,
-      "lastAccessed": 1775916827374,
+      "lastAccessed": 1776096642933,
       "keyFiles": [
         "basys3.xdc",
         "Basys3_XDC_example.txt"
@@ -72,14 +72,14 @@
       "path": "docs",
       "purpose": "Documentation",
       "fileCount": 0,
-      "lastAccessed": 1775916827375,
+      "lastAccessed": 1776096642934,
       "keyFiles": []
     },
     "rtl": {
       "path": "rtl",
       "purpose": null,
-      "fileCount": 15,
-      "lastAccessed": 1775916827376,
+      "fileCount": 16,
+      "lastAccessed": 1776096642934,
       "keyFiles": [
         "alu.v",
         "alu_control_unit.v",
@@ -92,7 +92,7 @@
       "path": "scripts",
       "purpose": "Build/utility scripts",
       "fileCount": 3,
-      "lastAccessed": 1775916827377,
+      "lastAccessed": 1776096642935,
       "keyFiles": [
         "bin_to_mem.py",
         "generate_mem_files.sh",
@@ -103,7 +103,7 @@
       "path": "sim_riscof",
       "purpose": null,
       "fileCount": 2,
-      "lastAccessed": 1775916827378,
+      "lastAccessed": 1776096642936,
       "keyFiles": [
         "config.ini",
         "riscof_config.ini"
@@ -113,7 +113,7 @@
       "path": "sw",
       "purpose": null,
       "fileCount": 2,
-      "lastAccessed": 1775916827380,
+      "lastAccessed": 1776096642936,
       "keyFiles": [
         "test_hello.hex",
         "test_hello.S"
@@ -123,21 +123,21 @@
       "path": "tb",
       "purpose": null,
       "fileCount": 0,
-      "lastAccessed": 1775916827381,
+      "lastAccessed": 1776096642937,
       "keyFiles": []
     },
     "tests": {
       "path": "tests",
       "purpose": "Test files",
       "fileCount": 0,
-      "lastAccessed": 1775916827382,
+      "lastAccessed": 1776096642938,
       "keyFiles": []
     },
     "TFG": {
       "path": "TFG",
       "purpose": null,
       "fileCount": 31,
-      "lastAccessed": 1775916827382,
+      "lastAccessed": 1776096642939,
       "keyFiles": [
         "A0.Leeme.txt",
         "A0.MiTFG.pdf",

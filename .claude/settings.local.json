@@ -39,7 +39,25 @@
       "mcp__plugin_oh-my-claudecode_t__notepad_write_priority",
       "Bash(docker --version)",
       "mcp__plugin_oh-my-claudecode_t__python_repl",
-      "Bash(/c/Users/xiangmin/AppData/Local/Microsoft/WindowsApps/python3.exe:*)"
+      "Bash(/c/Users/xiangmin/AppData/Local/Microsoft/WindowsApps/python3.exe:*)",
+      "Read(//usr/local/bin/**)",
+      "Bash(ls /c/iverilog*)",
+      "Bash(find /c -name iverilog.exe)",
+      "Bash(/c/iverilog/bin/iverilog -g2012 -o build/tb_rv32i_inline.vvp tb/integration/tb_rv32i_inline.v rtl/*.v)",
+      "Bash(/c/iverilog/bin/vvp build/tb_rv32i_inline.vvp)",
+      "Bash(/c/iverilog/bin/iverilog -g2012 -o build/tb_control_unit.vvp tb/unit/tb_control_unit.v rtl/control_unit.v)",
+      "Bash(/c/iverilog/bin/vvp build/tb_control_unit.vvp)",
+      "Bash(/c/iverilog/bin/iverilog -g2012 -DSIMULATION -o build/tb_rv32i_inline.vvp tb/integration/tb_rv32i_inline.v rtl/*.v)",
+      "Bash(/c/iverilog/bin/iverilog -g2012 -o build/tb_isa_test.vvp tb/isa/tb_isa_test.v rtl/*.v)",
+      "Bash(/c/iverilog/bin/vvp build/tb_isa_test.vvp +TESTFILE=tests/isa/mem/rv32ui-p-addi.mem)",
+      "Bash(/c/iverilog/bin/iverilog -g2012 -o build/tb_alu.vvp tb/unit/tb_alu.v rtl/alu.v)",
+      "Bash(/c/iverilog/bin/vvp build/tb_alu.vvp)",
+      "Bash(/c/iverilog/bin/iverilog -g2012 -o build/tb_pc_register.vvp tb/unit/tb_pc_register.v rtl/pc_register.v)",
+      "Bash(/c/iverilog/bin/vvp build/tb_pc_register.vvp)",
+      "Bash(/c/iverilog/bin/iverilog -g2012 -o build/tb_immediate_generator.vvp tb/unit/tb_immediate_generator.v rtl/immediate_generator.v)",
+      "Bash(/c/iverilog/bin/vvp build/tb_immediate_generator.vvp)",
+      "Bash(/c/iverilog/bin/iverilog -g2012 -o build/tb_data_memory.vvp tb/unit/tb_data_memory.v rtl/data_memory.v)",
+      "Bash(/c/iverilog/bin/vvp build/tb_data_memory.vvp)"
     ]
   }
 }

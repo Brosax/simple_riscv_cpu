@@ -1,20 +1,30 @@
 module instruction_memory(
-	input wire [31:0] address,
-	output wire [31:0] instruction
+    input wire clk,
+    input wire [31:0] address,
+    output wire [31:0] instruction
 );
 
-	// Instruction memory: 8192 instructions (32KB)
-	reg [31:0] mem[0:8191];
+    // 完美支持 32KB
+    (* rom_style = "block" *) reg [31:0] mem[0:8191];
 
-	// Address mapping: subtract base address and divide by 4 for word addressing
-	// Includes bounds checking for safety
-	wire [31:0] word_addr = (address - 32'h80000000) >> 2;
-	assign instruction = (word_addr < 8192) ? mem[word_addr] : 32'h00000013; // NOP (addi x0,x0,0)
+    wire [12:0] word_addr = address[14:2];
+    wire in_range = (address[31:15] == 17'h1_0000);
 
-	// Initialize instruction memory from hex file
-	// Place test_hello.hex in the Vivado project root directory
-	initial begin
-		$readmemh("test_hello.mem", mem);
-	end
+    // 纯同步读取，Vivado 必秒推断 BRAM
+    reg [31:0] mem_out;
+    reg in_range_reg;
+
+    always @(posedge clk) begin
+        mem_out <= mem[word_addr];
+        in_range_reg <= in_range;
+    end
+
+    // 用组合逻辑决定最后输出，保证 BRAM 推断
+    assign instruction = in_range_reg ? mem_out : 32'h00000013; // NOP
+
+    initial begin
+        // 记得确认这个绝对路径是你电脑上的
+        $readmemh("C:/Users/xiangmin/Desktop/TFG/simple_riscv_cpu/rtl/test_hello.mem", mem);
+    end
 
 endmodule

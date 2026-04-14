@@ -106,7 +106,7 @@ module riscv_core_jtag (
 
     wire   [31:0] dbg_mem_addr;
     wire   [31:0] dbg_mem_wdata;
-    wire   [1:0]  dbg_mem_wstrb;
+    wire   [3:0]  dbg_mem_wstrb;
 
     // PC access: read PC (returns current PC), write PC (load new PC)
     // We approximate this by letting the stall handle it; actual PC write

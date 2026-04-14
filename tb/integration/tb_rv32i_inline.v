@@ -133,7 +133,9 @@ module tb_rv32i_inline;
     initial begin
         rst = 1; #20; rst = 0;
 
-        #10; check_i_type_arith(2,  0,  10,  32'd10,       "SETUP: ADDI x2=10");
+        // Synchronous read: first instruction fetched at first rising edge after reset (time 30)
+        // Instruction at PC is available 1 cycle after PC changes
+        #15; check_i_type_arith(2,  0,  10,  32'd10,       "SETUP: ADDI x2=10");
         #10; check_i_type_arith(3,  0, -20,  32'hFFFFFFEC, "SETUP: ADDI x3=-20");
         #10; check_r_type(4, 2, 3, 32'hFFFFFFF6, "ADD x4=x2+x3");
         #10; check_r_type(5, 2, 3, 32'd30,       "SUB x5=x2-x3");
@@ -148,7 +150,6 @@ module tb_rv32i_inline;
         #10; check_reg(6, 32'd30, "MEMORY: LW x6=mem[8]=30");
 
         // BNE at 0x80000030: x3(-20) != x2(10), branch taken to 0x80000048
-        // BNE executes in the clock edge between last check and this #10
         #10;
         if (uut.pc_reg.pc_out === 32'h80000048) begin
             $display("PASS: BNE branch taken to 0x80000048");

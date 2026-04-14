@@ -18,7 +18,7 @@ module riscv_core(
 	input wire [31:0] debug_mem_addr,
 	input wire        debug_mem_write,
 	input wire [31:0] debug_mem_wdata,
-	input wire [1:0]  debug_mem_wstrb,
+	input wire [3:0]  debug_mem_wstrb,
 	output wire [31:0] debug_mem_rdata
 );
 
@@ -84,30 +84,69 @@ module riscv_core(
 	wire is_gpio_access = (alu_result >= 32'hFFFF0010) && (alu_result <= 32'hFFFF001F);
 	wire is_tohost_access = (alu_result == TOHOST_ADDR);
 	wire is_data_mem_access = !(is_timer_access || is_gpio_access || is_tohost_access);
+	
+
+
+
+	// ==========================================
+    // MULTI-CYCLE FSM (适配 BRAM 延迟的状态机)
+    // ==========================================
+    localparam S_FETCH  = 2'd0;
+    localparam S_EXEC   = 2'd1;
+    localparam S_MEM_WB = 2'd2;
+
+    reg [1:0] cpu_state;
+
+    always @(posedge clk or posedge rst) begin
+        if (rst) begin
+            cpu_state <= S_FETCH;
+        end else if (!cpu_stall) begin // cpu_stall 就是 JTAG 传来的 stall
+            case (cpu_state)
+                S_FETCH:  cpu_state <= S_EXEC; // 等待 1 周期取指
+                S_EXEC:   if (opcode == OPCODE_I_TYPE_LOAD) 
+                              cpu_state <= S_MEM_WB; // LW 需要额外等 1 周期数据
+                          else 
+                              cpu_state <= S_FETCH;  // 其他指令 2 周期完成
+                S_MEM_WB: cpu_state <= S_FETCH;
+                default:  cpu_state <= S_FETCH;
+            endcase
+        end
+    end
+
+    // 指令完成标志
+    wire is_load = (opcode == OPCODE_I_TYPE_LOAD);
+    wire instruction_done = (cpu_state == S_EXEC && !is_load) || (cpu_state == S_MEM_WB);
+
+    // 【核心】覆盖原有的控制信号
+    wire real_pc_stall  = stall || !instruction_done; // 指令没完成前，死死冻结 PC
+    wire real_reg_write = reg_write && instruction_done; // 只有指令最后 1 周期才写寄存器
+    wire real_mem_write = mem_write && (cpu_state == S_EXEC); // 写内存只在 EXEC 阶段触发 1 次
 
 	// Read/write enable signals for each component
 	wire data_mem_read_enable = mem_read && is_data_mem_access;
-	wire data_mem_write_enable = mem_write && is_data_mem_access;
+	wire data_mem_write_enable = real_mem_write && is_data_mem_access;
+
+	
 
 	wire timer_read_enable = mem_read && is_timer_access;
-	wire timer_write_enable = mem_write && is_timer_access;
+	wire timer_write_enable = real_mem_write && is_timer_access;
 
 	wire gpio_read_enable = mem_read && is_gpio_access;
-	wire gpio_write_enable = mem_write && is_gpio_access;
-
+	wire gpio_write_enable = real_mem_write && is_gpio_access;
 	// Module instantiations
 
 	// 1. PC Register
 	pc_register pc_reg(
 		.clk(clk),
 		.rst(rst),
-		.stall(stall),
+		.stall(real_pc_stall),
 		.pc_in(pc_next),
 		.pc_out(pc_current)
 	);
 
 	// 2. Instruction Memory
 	instruction_memory instr_mem(
+		.clk(clk),
 		.address(pc_current),
 		.instruction(instruction)
 	);
@@ -133,7 +172,7 @@ module riscv_core(
 		.read_reg2(rs2),
 		.write_reg(rd),
 		.write_data(write_back_data),
-		.write_enable(reg_write),
+		.write_enable(real_reg_write),
 		.read_data1(reg_read_data1),
 		.read_data2(reg_read_data2),
 		.debug_read_addr(debug_reg_addr),
@@ -210,7 +249,7 @@ module riscv_core(
 	);
 
 	// tohost logic for riscv-tests
-	assign host_write_enable = mem_write && (alu_result == TOHOST_ADDR);
+	assign host_write_enable = real_mem_write && (alu_result == TOHOST_ADDR);
 	assign host_data_out = reg_read_data2;
 
 	// Debug outputs
