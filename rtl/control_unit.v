@@ -22,6 +22,7 @@ module control_unit(
     localparam OPCODE_JALR = 7'b1100111;
     localparam OPCODE_LUI = 7'b0110111;
     localparam OPCODE_AUIPC = 7'b0010111;
+    localparam OPCODE_SYSTEM = 7'b1110011;
 
     always @(*) begin
         // Default values
@@ -81,6 +82,12 @@ module control_unit(
 			reg_write = 1'b1;
 			alu_src = 1'b1;
 			alu_op = 2'b11;
+		end
+		OPCODE_SYSTEM: begin
+			// The exact write condition depends on funct3, handled in core
+			reg_write = 1'b1; // Core logic will mask this if it's ECALL/EBREAK/MRET
+			alu_src = 1'b0;
+			alu_op = 2'b00;
 		end
 		default: ;
 	endcase

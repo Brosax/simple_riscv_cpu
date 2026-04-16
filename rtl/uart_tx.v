@@ -7,22 +7,22 @@ module uart_tx(
     output reg tx_done
 );
 
-    // 115200 bps @ 12MHz
-    // baud_div = 12_000_000 / 115200 ≈ 104
-    localparam BAUD_DIV = 104;
+    // 115200 bps @ 12.5MHz (post-divider)
+    // baud_div = 12_500_000 / 115200 ≈ 109
+    localparam BAUD_DIV = 109;
 
-    localparam IDLE  = 3'd0;
-    localparam START = 3'd1;
-    localparam BIT0  = 3'd2;
-    localparam BIT1  = 3'd3;
-    localparam BIT2  = 3'd4;
-    localparam BIT3  = 3'd5;
-    localparam BIT4  = 3'd6;
-    localparam BIT5  = 3'd7;
-    localparam BIT6  = 3'd8;
-    localparam BIT7  = 3'd9;
-    localparam STOP  = 3'd10;
-    localparam DONE  = 3'd11;
+    localparam IDLE  = 4'd0;
+    localparam START = 4'd1;
+    localparam BIT0  = 4'd2;
+    localparam BIT1  = 4'd3;
+    localparam BIT2  = 4'd4;
+    localparam BIT3  = 4'd5;
+    localparam BIT4  = 4'd6;
+    localparam BIT5  = 4'd7;
+    localparam BIT6  = 4'd8;
+    localparam BIT7  = 4'd9;
+    localparam STOP  = 4'd10;
+    localparam DONE  = 4'd11;
 
     reg [3:0] state;
     reg [15:0] baud_counter;

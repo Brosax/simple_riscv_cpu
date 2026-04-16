@@ -1,0 +1,12 @@
+#-----------------------------------------------------------
+# Vivado v2019.1 (64-bit)
+# SW Build 2552052 on Fri May 24 14:49:42 MDT 2019
+# IP Build 2548770 on Fri May 24 18:01:18 MDT 2019
+# Start of session at: Tue Apr 14 16:53:06 2026
+# Process ID: 63476
+# Current directory: C:/Users/xiangmin/Desktop/TFG/simple_riscv_cpu
+# Command line: vivado.exe -mode batch -source basys3_top.tcl
+# Log file: C:/Users/xiangmin/Desktop/TFG/simple_riscv_cpu/vivado.log
+# Journal file: C:/Users/xiangmin/Desktop/TFG/simple_riscv_cpu\vivado.jou
+#-----------------------------------------------------------
+source basys3_top.tcl

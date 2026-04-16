@@ -16,11 +16,29 @@ module basys3_top(
     output wire uart_tx,
     input wire uart_rx,
     // LED
-    output wire [15:0] led
+    output wire [15:0] led,
+    // Seven Segment Display
+    output wire [6:0] seg,
+    output wire dp,
+    output wire [3:0] an
 );
 
     wire clk;
     wire rst_n;
+
+    // The Basys3 board actually has a 100MHz oscillator on W5, not 12MHz.
+    // We must divide the clock to avoid timing violations and fix the delay length.
+    // Divide by 8: 100MHz / 8 = 12.5MHz.
+    reg [2:0] clk_div = 3'b000;
+    always @(posedge clk_12m) begin
+        clk_div <= clk_div + 1'b1;
+    end
+    
+    // Use BUFG to route the divided clock to the global clock network
+    BUFG bufg_inst (
+        .I(clk_div[2]),
+        .O(clk)
+    );
 
     // Reset signal - active low inside modules
     // rst_btn is active high (button pressed = reset)
@@ -30,9 +48,6 @@ module basys3_top(
         rst_sync1 <= rst_sync0;
     end
     assign rst_n = !rst_sync1;
-
-    // Clock - use 12MHz directly (no PLL for minimal design)
-    assign clk = clk_12m;
 
     // Debug signals - tie off for FPGA standalone
     wire [31:0] debug_reg_rdata;
@@ -53,6 +68,7 @@ module basys3_top(
         .clk(clk),
         .rst(rst_sync1),
         .timer_interrupt(),
+        .ext_interrupt(1'b0), // Tie off external interrupt for now
         .gpio_pins(),
         .host_write_enable(host_write_enable),
         .host_data_out(host_data_out),
@@ -77,7 +93,7 @@ module basys3_top(
         .clk(clk),
         .rst_n(rst_n),
         .tx_enable(host_write_enable),
-        .tx_data(host_data_out[7:0]),
+        .tx_data(host_data_out[7:0]), // 发送原始的 8-bit ASCII 数据
         .uart_tx(uart_tx),
         .tx_done(tx_done)
     );
@@ -86,11 +102,15 @@ module basys3_top(
     reg [15:0] led_reg;
     reg [31:0] led_counter;
     reg [3:0] error_code;
+    reg host_write_seen;
 
     // Error detection: if host_write_enable pulses too fast or unexpected, set error
     // Simple watchdog: if no host_write_enable for ~2 seconds, assume hang
     reg [31:0] watchdog_counter;
     reg watchdog_expired;
+    
+    // Seven segment register
+    reg [3:0] sevenseg_digit;
 
     always @(posedge clk) begin
         if (!rst_n) begin
@@ -99,11 +119,15 @@ module basys3_top(
             error_code <= 4'd0;
             watchdog_counter <= 32'd0;
             watchdog_expired <= 1'b0;
+            sevenseg_digit <= 4'd0;
+            host_write_seen <= 1'b0;
         end else begin
             // Watchdog: count cycles, reset on host_write_enable
             if (host_write_enable) begin
                 watchdog_counter <= 32'd0;
                 watchdog_expired <= 1'b0;
+                sevenseg_digit <= host_data_out[3:0];
+                host_write_seen <= ~host_write_seen;
             end else if (watchdog_counter < 32'd24_000_000) begin  // ~2s @ 12MHz
                 watchdog_counter <= watchdog_counter + 1'b1;
                 watchdog_expired <= 1'b0;
@@ -116,15 +140,41 @@ module basys3_top(
                 led_counter <= led_counter + 1'b1;
             end else begin
                 led_counter <= 32'd0;
-                if (!watchdog_expired) begin
-                    // Normal: rotate left (running light)
-                    led_reg <= {led_reg[14:0], led_reg[15]};
-                end
-                // If watchdog expired, freeze LEDs (error indication)
+                // Normal: rotate left (running light)
+                // Watchdog expired no longer freezes LED, only sets error state if needed
+                led_reg <= {led_reg[14:0], led_reg[15]};
             end
         end
     end
 
-    assign led = led_reg;
+    // Seven segment decoding (active low)
+    reg [6:0] seg_out;
+    always @(*) begin
+        case (sevenseg_digit)
+            4'd0: seg_out = 7'b1000000; // 0
+            4'd1: seg_out = 7'b1111001; // 1
+            4'd2: seg_out = 7'b0100100; // 2
+            4'd3: seg_out = 7'b0110000; // 3
+            4'd4: seg_out = 7'b0011001; // 4
+            4'd5: seg_out = 7'b0010010; // 5
+            4'd6: seg_out = 7'b0000010; // 6
+            4'd7: seg_out = 7'b1111000; // 7
+            4'd8: seg_out = 7'b0000000; // 8
+            4'd9: seg_out = 7'b0010000; // 9
+            4'hA: seg_out = 7'b0001000; // A
+            4'hB: seg_out = 7'b0000011; // b
+            4'hC: seg_out = 7'b1000110; // C
+            4'hD: seg_out = 7'b0100001; // d
+            4'hE: seg_out = 7'b0000110; // E
+            4'hF: seg_out = 7'b0001110; // F
+            default: seg_out = 7'b1111111; // Off
+        endcase
+    end
+
+    assign seg = seg_out;
+    assign dp = 1'b1; // Decimal point off
+    assign an = 4'b1110; // Only rightmost digit enabled (active low)
+
+    assign led = {host_write_seen, ~uart_tx, ~uart_rx, led_reg[12:0]};
 
 endmodule
