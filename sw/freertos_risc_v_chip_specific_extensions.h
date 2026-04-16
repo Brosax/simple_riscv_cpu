@@ -1,0 +1,21 @@
+#ifndef FREERTOS_RISC_V_CHIP_SPECIFIC_EXTENSIONS_H
+#define FREERTOS_RISC_V_CHIP_SPECIFIC_EXTENSIONS_H
+
+#define portasmHAS_SIFIVE_SYS_REG 0
+#define portasmHAS_MTIME 1
+#define portasmADDITIONAL_CONTEXT_SIZE 0
+
+#ifdef __ASSEMBLER__
+
+.macro portasmSAVE_ADDITIONAL_REGISTERS
+.endm
+
+.macro portasmRESTORE_ADDITIONAL_REGISTERS
+.endm
+
+#define portasmsave_additional_registers portasmSAVE_ADDITIONAL_REGISTERS
+#define portasmrestore_additional_registers portasmRESTORE_ADDITIONAL_REGISTERS
+
+#endif
+
+#endif

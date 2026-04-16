@@ -1,4 +1,5 @@
 `timescale 1ns / 1ps
+`define SIMULATION
 
 // Inline integration test: hardcoded program exercises ADD, SUB, SLT, SLL,
 // ADDI, SLTI, SW, LW, BNE, AUIPC, JALR.
@@ -21,8 +22,12 @@ module tb_rv32i_inline;
     // Initialize data memory to zero and load test program
     integer j;
     initial begin
-        for (j = 0; j < 8192; j = j + 1)
-            uut.data_mem.mem[j] = 8'h00;
+        for (j = 0; j < 8192; j = j + 1) begin
+            uut.data_mem.mem_b0[j] = 8'h00;
+            uut.data_mem.mem_b1[j] = 8'h00;
+            uut.data_mem.mem_b2[j] = 8'h00;
+            uut.data_mem.mem_b3[j] = 8'h00;
+        end
         // --- SETUP ---
         uut.instr_mem.mem[0]  = 32'h00A00113; // 0x80000000: addi x2, x0, 10
         uut.instr_mem.mem[1]  = 32'hFEC00193; // 0x80000004: addi x3, x0, -20
@@ -115,10 +120,10 @@ module tb_rv32i_inline;
         input [255:0] test_name;
         reg [31:0] read_value;
         begin
-            read_value = {uut.data_mem.mem[mem_addr*4+3],
-                          uut.data_mem.mem[mem_addr*4+2],
-                          uut.data_mem.mem[mem_addr*4+1],
-                          uut.data_mem.mem[mem_addr*4]};
+            read_value = {uut.data_mem.mem_b3[mem_addr],
+                          uut.data_mem.mem_b2[mem_addr],
+                          uut.data_mem.mem_b1[mem_addr],
+                          uut.data_mem.mem_b0[mem_addr]};
             if (read_value === expected) begin
                 $display("PASS: %s (mem[%h] = %h)", test_name, mem_addr*4, expected);
                 tests_passed = tests_passed + 1;
