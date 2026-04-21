@@ -26,3 +26,17 @@ Thumbs.db
 *.swo
 *~
 .vscode/
+
+# AI Agents & Assistants
+.agents/skills/
+.claude/
+.kilo/
+.omc/
+AGENTS.md
+CLAUDE.md
+docs/superpowers/
+
+# Other unrelated files
+TFG/
+TFG.zip
+
