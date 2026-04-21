@@ -108,6 +108,10 @@ module riscv_core(
 
 	wire interrupt_pending = mstatus_mie && ( (mie_mtie && mip_mtip) || (mie_meie && mip_meip) );
 	
+	// 指令完成标志
+    wire is_load = (opcode == OPCODE_I_TYPE_LOAD);
+    wire instruction_done = (cpu_state == S_EXEC && !is_load) || (cpu_state == S_MEM_WB);
+
 	// We take a trap when we are at S_FETCH (before executing a new instruction) and an interrupt is pending,
 	// OR when we finish executing an ECALL/EBREAK
 	wire trap_trigger = (cpu_state == S_FETCH && interrupt_pending) || (instruction_done && (is_ecall || is_ebreak));
@@ -120,8 +124,8 @@ module riscv_core(
 	                         is_ebreak ? 32'd3 : // Breakpoint
 	                         32'd0;
 
-
-
+	// Overwrite CPU stall so we don't fetch/exec during a trap jump
+	wire real_pc_stall  = stall || (!instruction_done && !trap_trigger && !mret_trigger); //  trap/mret 强制放行 PC 更新
 
 	// Peripheral signals
 	wire [31:0] timer_read_data;
@@ -152,6 +156,8 @@ module riscv_core(
     reg [1:0] cpu_state;
 
     
+    
+    
     always @(posedge clk or posedge rst) begin
         if (rst) begin
             cpu_state <= S_FETCH;
@@ -173,12 +179,14 @@ module riscv_core(
     end
 
 
+
+
     // 指令完成标志
     wire is_load = (opcode == OPCODE_I_TYPE_LOAD);
     wire instruction_done = (cpu_state == S_EXEC && !is_load) || (cpu_state == S_MEM_WB);
 
     // 【核心】覆盖原有的控制信号
-    wire real_pc_stall  = stall || (!instruction_done && !trap_trigger && !mret_trigger); //  trap/mret 强制放行 PC 更新
+    // wire real_pc_stall already defined above
     wire real_reg_write = reg_write && instruction_done && !is_ecall && !is_ebreak && !is_mret; // SYSTEM 指令不一定写寄存器 // 只有指令最后 1 周期才写寄存器
     wire real_mem_write = mem_write && (cpu_state == S_EXEC); // 写内存只在 EXEC 阶段触发 1 次
 
@@ -240,150 +248,3 @@ module riscv_core(
 		.read_data1(reg_read_data1),
 		.read_data2(reg_read_data2),
 		.debug_read_addr(debug_reg_addr),
-		.debug_write_enable(debug_reg_write),
-		.debug_write_data(debug_reg_wdata),
-		.debug_read_data(debug_reg_rdata)
-	);
-
-	// 5. Immediate Generator
-	immediate_generator imm_gen(
-		.instruction(instruction),
-		.imm_extended(imm_extended)
-	);
-
-	// 6. ALU Control Unit
-	alu_control_unit alu_ctrl(
-		.alu_op(alu_op),
-		.funct3(funct3),
-		.funct7_bit5(funct7_bit5),
-		.alu_control(alu_control_signal)
-	);
-
-	// 7. ALU
-	wire [31:0] alu_operand1;
-	assign alu_operand1 = (opcode == OPCODE_AUIPC) ? pc_current :
-		(opcode == OPCODE_LUI) ? 32'b0 :
-		reg_read_data1;
-
-	assign alu_operand2 = alu_src ? imm_extended : reg_read_data2;
-	alu alu_inst(
-		.operand1(alu_operand1),
-		.operand2(alu_operand2),
-		.alu_control(alu_control_signal),
-		.result(alu_result),
-		.zero(alu_zero_flag)
-	);
-
-	// 8. Data Memory
-	data_memory data_mem(
-		.clk(clk),
-		.address(alu_result),
-		.write_data(reg_read_data2),
-		.write_enable(data_mem_write_enable),
-		.read_data(mem_read_data_from_data_mem),
-		.funct3(funct3),
-		.debug_mem_read(debug_mem_read),
-		.debug_mem_addr(debug_mem_addr),
-		.debug_mem_write(debug_mem_write),
-		.debug_mem_wdata(debug_mem_wdata),
-		.debug_mem_wstrb(debug_mem_wstrb),
-		.debug_mem_rdata(debug_mem_rdata)
-	);
-
-	// 9. Timer
-	timer timer_inst(
-		.clk(clk),
-		.rst(rst),
-		.address(alu_result),
-		.write_data(reg_read_data2),
-		.write_enable(timer_write_enable),
-		.read_data(timer_read_data),
-		.interrupt(timer_interrupt_internal)
-	);
-
-	
-	// 11. CSR File
-	csr_file csr_inst(
-		.clk(clk),
-		.rst(rst),
-		.csr_addr(instruction[31:20]),
-		.csr_wdata(csr_wdata),
-		.csr_we(csr_we),
-		.csr_rdata(csr_rdata),
-		.timer_irq(timer_irq_internal),
-		.ext_irq(ext_interrupt),
-		.trap_trigger(trap_trigger),
-		.trap_pc(trap_pc),
-		.trap_cause(trap_cause),
-		.mret_trigger(mret_trigger),
-		.mtvec_out(mtvec_out),
-		.mepc_out(mepc_out),
-		.mstatus_mie(mstatus_mie),
-		.mie_mtie(mie_mtie),
-		.mie_meie(mie_meie),
-		.mip_mtip(mip_mtip),
-		.mip_meip(mip_meip)
-	);
-
-	// 10. GPIO
-	gpio gpio_inst(
-		.clk(clk),
-		.rst(rst),
-		.address(alu_result),
-		.write_data(reg_read_data2),
-		.write_enable(gpio_write_enable),
-		.read_data(gpio_read_data),
-		.gpio_pins(gpio_pins)
-	);
-
-	// tohost logic for riscv-tests
-	assign host_write_enable = real_mem_write && (alu_result == TOHOST_ADDR);
-	assign host_data_out = reg_read_data2;
-
-	// Debug outputs
-	assign timer_interrupt = timer_interrupt_internal;
-	assign debug_stall_status = cpu_stall;
-	assign debug_pc_value = pc_current;
-
-	// Read data multiplexer
-	assign mem_read_data = is_timer_access ? timer_read_data :
-		is_gpio_access ? gpio_read_data :
-		is_instr_mem_access ? mem_read_data_from_instr_mem :
-		mem_read_data_from_data_mem;
-
-	// Next PC logic
-	assign pc_plus_4 = pc_current + 4;
-	wire [31:0] pc_target_imm = pc_current + imm_extended;
-	wire [31:0] pc_target_jalr = {alu_result[31:1], 1'b0};
-
-	// Branch condition logic (using logical operators)
-	wire take_branch;
-	assign take_branch = (branch && (
-		(funct3 == 3'b000 && alu_zero_flag) ||  // BEQ
-		(funct3 == 3'b001 && ~alu_zero_flag) || // BNE
-		(funct3 == 3'b100 && alu_result[0]) ||  // BLT
-		(funct3 == 3'b101 && ~alu_result[0]) || // BGE
-		(funct3 == 3'b110 && alu_result[0]) ||  // BLTU
-		(funct3 == 3'b111 && ~alu_result[0])    // BGEU
-	));
-
-	// PC multiplexer
-	assign pc_next = trap_trigger ? mtvec_out : mret_trigger ? mepc_out : (jump && opcode == OPCODE_JAL) ? pc_target_imm :
-		(jump && opcode == OPCODE_JALR) ? pc_target_jalr :
-		take_branch ? pc_target_imm :
-		pc_plus_4;
-
-	// Write back logic
-	assign write_back_data = is_csr ? csr_rdata : jump ? pc_plus_4 : (mem_to_reg ? mem_read_data : alu_result);
-
-	// Debug trace (simulation only)
-`ifdef SIMULATION
-	always @(posedge clk) begin
-		if (!rst) begin
-			$display("PC: %h, INST: %h, reg_write: %b, rd: %d, wb_data: %h, alu_res: %h, op1: %h, op2: %h, alu_ctrl: %b",
-				pc_current, instruction, reg_write, rd, write_back_data, alu_result, alu_operand1, alu_operand2, alu_control_signal);
-		end
-	end
-`endif
-
-endmodule

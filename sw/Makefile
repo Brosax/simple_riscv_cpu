@@ -37,7 +37,7 @@ main.bin: main.elf
 	$(OBJCOPY) -O binary $< $@
 
 main.mem: main.bin
-	cd .. && python3 patch.py sw/main.bin sw/main.mem
+	cd .. && python3 scripts/bin_to_mem.py sw/main.bin rtl/main.mem
 
 clean:
-	rm -f $(OBJS) main.elf main.bin main.mem main.dump
+	rm -f $(OBJS) main.elf main.bin main.mem main.dump ../rtl/main.mem

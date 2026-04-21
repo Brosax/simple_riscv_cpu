@@ -34,6 +34,7 @@ module riscv_core(
 	localparam OPCODE_LUI = 7'b0110111;
 	localparam OPCODE_AUIPC = 7'b0010111;
 	localparam OPCODE_SYSTEM = 7'b1110011;
+	localparam OPCODE_SYSTEM = 7'b1110011;
 
 	// Memory-mapped I/O address constants
 	// Note: 0x80001000 is used as the data section address by pre-compiled ISA tests
@@ -120,8 +121,8 @@ module riscv_core(
 	                         is_ebreak ? 32'd3 : // Breakpoint
 	                         32'd0;
 
-
-
+	// Overwrite CPU stall so we don't fetch/exec during a trap jump
+	wire real_pc_stall  = stall || (!instruction_done && !trap_trigger && !mret_trigger); //  trap/mret 强制放行 PC 更新
 
 	// Peripheral signals
 	wire [31:0] timer_read_data;
@@ -152,6 +153,8 @@ module riscv_core(
     reg [1:0] cpu_state;
 
     
+    
+    
     always @(posedge clk or posedge rst) begin
         if (rst) begin
             cpu_state <= S_FETCH;
@@ -171,6 +174,8 @@ module riscv_core(
             end
         end
     end
+
+
 
 
     // 指令完成标志
@@ -325,6 +330,30 @@ module riscv_core(
 		.mip_meip(mip_meip)
 	);
 
+	
+	// 11. CSR File
+	csr_file csr_inst(
+		.clk(clk),
+		.rst(rst),
+		.csr_addr(instruction[31:20]),
+		.csr_wdata(csr_wdata),
+		.csr_we(csr_we),
+		.csr_rdata(csr_rdata),
+		.timer_irq(timer_irq_internal),
+		.ext_irq(ext_interrupt),
+		.trap_trigger(trap_trigger),
+		.trap_pc(trap_pc),
+		.trap_cause(trap_cause),
+		.mret_trigger(mret_trigger),
+		.mtvec_out(mtvec_out),
+		.mepc_out(mepc_out),
+		.mstatus_mie(mstatus_mie),
+		.mie_mtie(mie_mtie),
+		.mie_meie(mie_meie),
+		.mip_mtip(mip_mtip),
+		.mip_meip(mip_meip)
+	);
+
 	// 10. GPIO
 	gpio gpio_inst(
 		.clk(clk),
@@ -341,6 +370,7 @@ module riscv_core(
 	assign host_data_out = reg_read_data2;
 
 	// Debug outputs
+	assign timer_interrupt = timer_interrupt_internal;
 	assign timer_interrupt = timer_interrupt_internal;
 	assign debug_stall_status = cpu_stall;
 	assign debug_pc_value = pc_current;
@@ -368,22 +398,3 @@ module riscv_core(
 	));
 
 	// PC multiplexer
-	assign pc_next = trap_trigger ? mtvec_out : mret_trigger ? mepc_out : (jump && opcode == OPCODE_JAL) ? pc_target_imm :
-		(jump && opcode == OPCODE_JALR) ? pc_target_jalr :
-		take_branch ? pc_target_imm :
-		pc_plus_4;
-
-	// Write back logic
-	assign write_back_data = is_csr ? csr_rdata : jump ? pc_plus_4 : (mem_to_reg ? mem_read_data : alu_result);
-
-	// Debug trace (simulation only)
-`ifdef SIMULATION
-	always @(posedge clk) begin
-		if (!rst) begin
-			$display("PC: %h, INST: %h, reg_write: %b, rd: %d, wb_data: %h, alu_res: %h, op1: %h, op2: %h, alu_ctrl: %b",
-				pc_current, instruction, reg_write, rd, write_back_data, alu_result, alu_operand1, alu_operand2, alu_control_signal);
-		end
-	end
-`endif
-
-endmodule

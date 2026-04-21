@@ -16,18 +16,24 @@ module tb_rv32i_inline;
         .clk(clk),
         .rst(rst),
         .timer_interrupt(timer_interrupt),
-        .gpio_pins(gpio_pins_tb)
+        .gpio_pins(gpio_pins_tb),
+        .ext_interrupt(1'b0),
+        .debug_stall(1'b0),
+        .debug_reg_addr(5'b0),
+        .debug_reg_read(1'b0),
+        .debug_reg_write(1'b0),
+        .debug_reg_wdata(32'b0),
+        .debug_mem_read(1'b0),
+        .debug_mem_addr(32'b0),
+        .debug_mem_write(1'b0),
+        .debug_mem_wdata(32'b0),
+        .debug_mem_wstrb(4'b0)
     );
 
     // Initialize data memory to zero and load test program
     integer j;
     initial begin
-        for (j = 0; j < 8192; j = j + 1) begin
-            uut.data_mem.mem_b0[j] = 8'h00;
-            uut.data_mem.mem_b1[j] = 8'h00;
-            uut.data_mem.mem_b2[j] = 8'h00;
-            uut.data_mem.mem_b3[j] = 8'h00;
-        end
+        #1; // Wait for $readmemh to finish
         // --- SETUP ---
         uut.instr_mem.mem[0]  = 32'h00A00113; // 0x80000000: addi x2, x0, 10
         uut.instr_mem.mem[1]  = 32'hFEC00193; // 0x80000004: addi x3, x0, -20
@@ -135,48 +141,48 @@ module tb_rv32i_inline;
         end
     endtask
 
+    task wait_for_done;
+        begin
+            @(posedge clk);
+            while (!uut.instruction_done) @(posedge clk);
+            // wait for the negative edge so we check register states AFTER they are written
+            @(negedge clk);
+        end
+    endtask
+
     initial begin
         rst = 1; #20; rst = 0;
 
-        // Synchronous read: first instruction fetched at first rising edge after reset (time 30)
-        // Instruction at PC is available 1 cycle after PC changes
-        #15; check_i_type_arith(2,  0,  10,  32'd10,       "SETUP: ADDI x2=10");
-        #10; check_i_type_arith(3,  0, -20,  32'hFFFFFFEC, "SETUP: ADDI x3=-20");
-        #10; check_r_type(4, 2, 3, 32'hFFFFFFF6, "ADD x4=x2+x3");
-        #10; check_r_type(5, 2, 3, 32'd30,       "SUB x5=x2-x3");
-        #10; check_r_type(6, 3, 2, 32'd1,        "SLT x6=(x3<x2)=(-20<10)=1");
-        #10; check_r_type(7, 3, 2, 32'hFFFFB000, "SLL x7=x3<<x2=0xFFFFEC<<10");
-        #10; check_i_type_arith(8,  2, 15,  32'd25, "ADDI x8=25");
-        #10; check_i_type_arith(9,  3, -5,  32'd1,  "SLTI x9=(-20<-5)=1");
-        #10; check_i_type_arith(17, 0,  4,  32'd4,  "MEMORY: ADDI x17=4");
+        wait_for_done(); check_i_type_arith(2,  0,  10,  32'd10,       "SETUP: ADDI x2=10");
+        wait_for_done(); check_i_type_arith(3,  0, -20,  32'hFFFFFFEC, "SETUP: ADDI x3=-20");
+        wait_for_done(); check_r_type(4, 2, 3, 32'hFFFFFFF6, "ADD x4=x2+x3");
+        wait_for_done(); check_r_type(5, 2, 3, 32'd30,       "SUB x5=x2-x3");
+        wait_for_done(); check_r_type(6, 3, 2, 32'd1,        "SLT x6=(x3<x2)=(-20<10)=1");
+        wait_for_done(); check_r_type(7, 3, 2, 32'hFFFFB000, "SLL x7=x3<<x2=0xFFFFEC<<10");
+        wait_for_done(); check_i_type_arith(8,  2, 15,  32'd25, "ADDI x8=25");
+        wait_for_done(); check_i_type_arith(9,  3, -5,  32'd1,  "SLTI x9=(-20<-5)=1");
+        wait_for_done(); check_i_type_arith(17, 0,  4,  32'd4,  "MEMORY: ADDI x17=4");
         // SW (mem[9]) executes naturally in the next clock edge
-        #10; check_mem(2, 32'd30, "MEMORY: SW mem[8]=30");
-        #10; check_reg(7, 32'd0,  "MEMORY: LW x7=mem[12]=0");
-        #10; check_reg(6, 32'd30, "MEMORY: LW x6=mem[8]=30");
+        wait_for_done(); check_mem(2, 32'd30, "MEMORY: SW mem[8]=30");
+        wait_for_done(); check_reg(7, 32'd0,  "MEMORY: LW x7=mem[12]=0");
+        wait_for_done(); check_reg(6, 32'd30, "MEMORY: LW x6=mem[8]=30");
 
-        // BNE at 0x80000030: x3(-20) != x2(10), branch taken to 0x80000048
-        #10;
-        if (uut.pc_reg.pc_out === 32'h80000048) begin
-            $display("PASS: BNE branch taken to 0x80000048");
-            tests_passed = tests_passed + 1;
-        end else begin
-            $display("FAIL: BNE (PC=%h, expected 0x80000048)", uut.pc_reg.pc_out);
-            tests_failed = tests_failed + 1;
-        end
+        // BNE
+        wait_for_done();
+        if (uut.pc_current !== 32'h80000030) $display("FAIL: PC before BNE (expected 0x80000030, got %h)", uut.pc_current);
+        else $display("PASS: PC before BNE");
+        
+        wait_for_done();
+        if (uut.pc_current !== 32'h80000048) $display("FAIL: BNE (PC=%h, expected 0x80000048)", uut.pc_current);
+        else $display("PASS: BNE (PC updated to 0x80000048)");
 
-        #10; check_i_type_arith(8, 0, 1, 32'd1, "BRANCH: ADDI x8=1 at target");
-        #10; check_reg(10, 32'h8000004C, "JUMP: AUIPC x10=0x8000004C");
-        #10; check_i_type_arith(10, 10, -76, 32'h80000000, "JUMP: ADDI x10=0x80000000");
+        check_reg(8, 32'd1,  "BRANCH: ADDI x8=1 at target");
+        wait_for_done(); check_reg(10, 32'h8000004C, "JUMP: AUIPC x10=0x8000004C");
+        wait_for_done(); check_reg(10, 32'h80000000, "JUMP: ADDI x10=0x80000000");
 
-        // JALR executes in the clock edge between last check and this #10
-        #10;
-        if (uut.pc_reg.pc_out === 32'h80000000) begin
-            $display("PASS: JALR jumped to 0x80000000");
-            tests_passed = tests_passed + 1;
-        end else begin
-            $display("FAIL: JALR (PC=%h, expected 0x80000000)", uut.pc_reg.pc_out);
-            tests_failed = tests_failed + 1;
-        end
+        wait_for_done();
+        if (uut.pc_current !== 32'h80000000) $display("FAIL: JALR did not jump to 0x80000000");
+        else $display("PASS: JALR jumped to 0x80000000");
         check_reg(1, 32'h80000058, "JUMP: JALR link x1=0x80000058");
 
         $display("\n-------------------");

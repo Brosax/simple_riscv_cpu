@@ -2,6 +2,7 @@
 #include <stddef.h>
 #include "FreeRTOS.h"
 #include "task.h"
+#include "semphr.h"
 
 // GCC 内置的可变参数宏（完美绕过 #include <stdarg.h> 的缺失）
 typedef __builtin_va_list va_list;
@@ -12,16 +13,26 @@ typedef __builtin_va_list va_list;
 // 内存映射的 I/O 地址
 #define UART_TX         ((volatile uint32_t *) 0x80002000)
 
+SemaphoreHandle_t xUartMutex = NULL;
+
 void uart_putc(char c) {
     *UART_TX = c;
-    for (volatile int i = 0; i < 200; i++) {
+    for (volatile int i = 0; i < 5000; i++) {
         // 空循环，消耗 CPU 周期，等待硬件把字发完
+        // 12.5MHz clk / 115200 = 109 cycles per bit -> ~1100 cycles per char.
+        // multi-cycle FSM makes this even safer. We use 5000 to be very safe.
     }
 }
 
 void uart_puts(const char *s) {
+    if (xUartMutex != NULL) {
+        xSemaphoreTake(xUartMutex, portMAX_DELAY);
+    }
     while (*s) {
         uart_putc(*s++);
+    }
+    if (xUartMutex != NULL) {
+        xSemaphoreGive(xUartMutex);
     }
 }
 
@@ -158,6 +169,9 @@ void printf(const char *format, ...) {
 }
 
 int main() {
+    // 初始化串口 Mutex
+    xUartMutex = xSemaphoreCreateMutex();
+
     uart_puts("Starting FreeRTOS\n");
 
     xTaskCreate(Task1, "Task1", configMINIMAL_STACK_SIZE, NULL, 1, NULL);
