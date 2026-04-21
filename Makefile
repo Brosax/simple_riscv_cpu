@@ -12,7 +12,7 @@ MEM_DIR   = tests/isa/mem
 SCRIPTS   = scripts
 BUILD     = build
 
-RTL_SRC   = $(wildcard $(RTL_DIR)/*.v)
+RTL_SRC   = $(filter-out $(RTL_DIR)/basys3_top.v, $(wildcard $(RTL_DIR)/*.v))
 
 $(shell mkdir -p $(BUILD))
 
