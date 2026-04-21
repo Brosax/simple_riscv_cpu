@@ -8,9 +8,9 @@ _start:
 .option pop
 
     # Initialize stack pointer
-    # Since data memory is 8KB (2048 words) starting from 0 (aliased),
-    # let's set the stack pointer to the top of 8KB memory (0x2000)
-    li sp, 0x00002000
+    # Since data memory is 32KB (8192 words) starting from 0 (aliased),
+    # let's set the stack pointer to the top of 32KB memory (0x8000)
+    li sp, 0x00008000
 
     # Copy .data section from ROM to RAM
     la t0, __data_load_start
@@ -32,6 +32,10 @@ _start:
     addi t0, t0, 4
     j 3b
 4:
+
+    # Set up trap handler for FreeRTOS
+    la t0, freertos_risc_v_trap_handler
+    csrw mtvec, t0
 
     # Jump to C main function
     jal ra, main

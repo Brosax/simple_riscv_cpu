@@ -1,0 +1,250 @@
+module riscv_core(
+	input wire clk,
+	input wire rst,
+	output wire timer_interrupt,
+	input wire ext_interrupt,
+	inout wire [7:0] gpio_pins,
+	output wire host_write_enable,
+	output wire [31:0] host_data_out,
+	// Debug / JTAG interface
+	input wire        debug_stall,         // freeze PC during debug access
+	output wire       debug_stall_status,  // current stall state
+	output wire [31:0] debug_pc_value,     // current PC value
+	input wire [4:0]  debug_reg_addr,
+	input wire        debug_reg_read,
+	input wire        debug_reg_write,
+	input wire [31:0] debug_reg_wdata,
+	output wire [31:0] debug_reg_rdata,
+	input wire        debug_mem_read,
+	input wire [31:0] debug_mem_addr,
+	input wire        debug_mem_write,
+	input wire [31:0] debug_mem_wdata,
+	input wire [3:0]  debug_mem_wstrb,
+	output wire [31:0] debug_mem_rdata
+);
+
+	// Opcode definitions (shared with control_unit.v)
+	localparam OPCODE_R_TYPE = 7'b0110011;
+	localparam OPCODE_I_TYPE_ARITH = 7'b0010011;
+	localparam OPCODE_I_TYPE_LOAD = 7'b0000011;
+	localparam OPCODE_S_TYPE = 7'b0100011;
+	localparam OPCODE_B_TYPE = 7'b1100011;
+	localparam OPCODE_JAL = 7'b1101111;
+	localparam OPCODE_JALR = 7'b1100111;
+	localparam OPCODE_LUI = 7'b0110111;
+	localparam OPCODE_AUIPC = 7'b0010111;
+	localparam OPCODE_SYSTEM = 7'b1110011;
+
+	// Memory-mapped I/O address constants
+	// Note: 0x80001000 is used as the data section address by pre-compiled ISA tests
+	// (linked at 0x00000000, data ALIGN(0x1000)). Using 0x80002000 avoids collisions.
+	localparam TOHOST_ADDR = 32'h80002000;
+
+	// Datapath signals
+	wire [31:0] pc_current, pc_next, pc_plus_4, pc_branch;
+
+	// Debug stall state: CPU is halted whenever debug_stall is asserted.
+	// JTAG clears it by driving debug_stall=0 (typically via DEBUG_RESET command).
+	reg cpu_stall;
+	always @(posedge clk or posedge rst) begin
+		if (rst)   cpu_stall <= 1'b0;
+		else        cpu_stall <= debug_stall;
+	end
+	wire stall = cpu_stall;
+	wire [31:0] instruction;
+	wire [31:0] imm_extended;
+	wire [31:0] alu_result, alu_operand2;
+	wire [31:0] reg_read_data1, reg_read_data2;
+	wire [31:0] mem_read_data;
+	wire [31:0] write_back_data;
+
+	// Control signals
+	wire alu_src, mem_to_reg, reg_write, mem_read, mem_write, branch, jump;
+	wire [1:0] alu_op;
+	wire [3:0] alu_control_signal;
+	wire alu_zero_flag;
+
+	// Instruction decode
+	wire [6:0] opcode = instruction[6:0];
+	wire [4:0] rs1 = instruction[19:15];
+	wire [4:0] rs2 = instruction[24:20];
+	wire [4:0] rd = instruction[11:7];
+	wire [2:0] funct3 = instruction[14:12];
+	wire funct7_bit5 = instruction[30];
+
+	// System instruction decode
+	wire is_system = (opcode == OPCODE_SYSTEM);
+	wire is_csr    = is_system && (funct3 != 3'b000);
+	wire is_mret   = is_system && (funct3 == 3'b000) && (instruction[31:20] == 12'h302);
+	wire is_ecall  = is_system && (funct3 == 3'b000) && (instruction[31:20] == 12'h000);
+	wire is_ebreak = is_system && (funct3 == 3'b000) && (instruction[31:20] == 12'h001);
+
+	// CSR Data path
+	wire [31:0] csr_rdata;
+	reg  [31:0] csr_wdata;
+	always @(*) begin
+		case (funct3)
+			3'b001: csr_wdata = reg_read_data1; // CSRRW
+			3'b010: csr_wdata = csr_rdata | reg_read_data1; // CSRRS
+			3'b011: csr_wdata = csr_rdata & ~reg_read_data1; // CSRRC
+			3'b101: csr_wdata = {27'b0, rs1}; // CSRRWI (rs1 field is zimm)
+			3'b110: csr_wdata = csr_rdata | {27'b0, rs1}; // CSRRSI
+			3'b111: csr_wdata = csr_rdata & ~{27'b0, rs1}; // CSRRCI
+			default: csr_wdata = 32'b0;
+		endcase
+	end
+
+	wire csr_we = is_csr && instruction_done && (funct3[1:0] != 2'b00 || rs1 != 5'b0); // don't write if rs1=0 for RS/RC
+
+	// Exception / Interrupt Logic
+	wire timer_irq_internal = timer_interrupt_internal;
+	wire [31:0] mtvec_out;
+	wire [31:0] mepc_out;
+	wire mstatus_mie;
+	wire mie_mtie;
+	wire mie_meie;
+	wire mip_mtip;
+	wire mip_meip;
+
+	wire interrupt_pending = mstatus_mie && ( (mie_mtie && mip_mtip) || (mie_meie && mip_meip) );
+	
+	// 指令完成标志
+    wire is_load = (opcode == OPCODE_I_TYPE_LOAD);
+    wire instruction_done = (cpu_state == S_EXEC && !is_load) || (cpu_state == S_MEM_WB);
+
+	// We take a trap when we are at S_FETCH (before executing a new instruction) and an interrupt is pending,
+	// OR when we finish executing an ECALL/EBREAK
+	wire trap_trigger = (cpu_state == S_FETCH && interrupt_pending) || (instruction_done && (is_ecall || is_ebreak));
+	wire mret_trigger = instruction_done && is_mret;
+	
+	wire [31:0] trap_pc = (cpu_state == S_FETCH && interrupt_pending) ? pc_current : pc_current; // for ecall it's pc_current
+	wire [31:0] trap_cause = (cpu_state == S_FETCH && interrupt_pending && mie_meie && mip_meip) ? 32'h8000000B : // Machine external int
+	                         (cpu_state == S_FETCH && interrupt_pending && mie_mtie && mip_mtip) ? 32'h80000007 : // Machine timer int
+	                         is_ecall ? 32'd11 : // Environment call from M-mode
+	                         is_ebreak ? 32'd3 : // Breakpoint
+	                         32'd0;
+
+	// Overwrite CPU stall so we don't fetch/exec during a trap jump
+	wire real_pc_stall  = stall || (!instruction_done && !trap_trigger && !mret_trigger); //  trap/mret 强制放行 PC 更新
+
+	// Peripheral signals
+	wire [31:0] timer_read_data;
+	wire [31:0] gpio_read_data;
+	wire [31:0] mem_read_data_from_data_mem;
+
+	// Address decode logic (Memory-Mapped I/O)
+	// Address ranges:
+	// Data Memory: [0x00000000 - 0xFFFEFFFF]
+	// Timer: [0xFFFF0000 - 0xFFFF000F]
+	// GPIO: [0xFFFF0010 - 0xFFFF001F]
+	wire is_timer_access = (alu_result >= 32'hFFFF0000) && (alu_result <= 32'hFFFF000F);
+	wire is_gpio_access = (alu_result >= 32'hFFFF0010) && (alu_result <= 32'hFFFF001F);
+	wire is_tohost_access = (alu_result == TOHOST_ADDR);
+	wire is_instr_mem_access = (alu_result[31:15] == 17'h1_0000);
+	wire is_data_mem_access = !(is_timer_access || is_gpio_access || is_tohost_access || is_instr_mem_access);
+	
+
+
+
+	// ==========================================
+    // MULTI-CYCLE FSM (适配 BRAM 延迟的状态机)
+    // ==========================================
+    localparam S_FETCH  = 2'd0;
+    localparam S_EXEC   = 2'd1;
+    localparam S_MEM_WB = 2'd2;
+
+    reg [1:0] cpu_state;
+
+    
+    
+    
+    always @(posedge clk or posedge rst) begin
+        if (rst) begin
+            cpu_state <= S_FETCH;
+        end else if (!cpu_stall) begin
+            if (trap_trigger || mret_trigger) begin
+                cpu_state <= S_FETCH; // reset to fetch after trap/mret
+            end else begin
+                case (cpu_state)
+                    S_FETCH:  if (!interrupt_pending) cpu_state <= S_EXEC;
+                    S_EXEC:   if (opcode == OPCODE_I_TYPE_LOAD) 
+                                  cpu_state <= S_MEM_WB;
+                              else 
+                                  cpu_state <= S_FETCH;
+                    S_MEM_WB: cpu_state <= S_FETCH;
+                    default:  cpu_state <= S_FETCH;
+                endcase
+            end
+        end
+    end
+
+
+
+
+    // 指令完成标志
+    wire is_load = (opcode == OPCODE_I_TYPE_LOAD);
+    wire instruction_done = (cpu_state == S_EXEC && !is_load) || (cpu_state == S_MEM_WB);
+
+    // 【核心】覆盖原有的控制信号
+    // wire real_pc_stall already defined above
+    wire real_reg_write = reg_write && instruction_done && !is_ecall && !is_ebreak && !is_mret; // SYSTEM 指令不一定写寄存器 // 只有指令最后 1 周期才写寄存器
+    wire real_mem_write = mem_write && (cpu_state == S_EXEC); // 写内存只在 EXEC 阶段触发 1 次
+
+	// Read/write enable signals for each component
+	wire data_mem_read_enable = mem_read && is_data_mem_access;
+	wire data_mem_write_enable = real_mem_write && is_data_mem_access;
+
+	
+
+	wire timer_read_enable = mem_read && is_timer_access;
+	wire timer_write_enable = real_mem_write && is_timer_access;
+
+	wire gpio_read_enable = mem_read && is_gpio_access;
+	wire gpio_write_enable = real_mem_write && is_gpio_access;
+	// Module instantiations
+
+	// 1. PC Register
+	pc_register pc_reg(
+		.clk(clk),
+		.rst(rst),
+		.stall(real_pc_stall),
+		.pc_in(pc_next),
+		.pc_out(pc_current)
+	);
+
+	// 2. Instruction Memory
+	wire [31:0] mem_read_data_from_instr_mem;
+	instruction_memory instr_mem(
+		.clk(clk),
+		.address(pc_current),
+		.instruction(instruction),
+		.data_addr(alu_result),
+		.funct3(funct3),
+		.data_read(mem_read_data_from_instr_mem)
+	);
+
+	// 3. Control Unit
+	control_unit ctrl_unit(
+		.opcode(opcode),
+		.alu_src(alu_src),
+		.alu_op(alu_op),
+		.mem_to_reg(mem_to_reg),
+		.reg_write(reg_write),
+		.mem_read(mem_read),
+		.mem_write(mem_write),
+		.branch(branch),
+		.jump(jump)
+	);
+
+	// 4. Register File
+	register_file reg_file(
+		.clk(clk),
+		.rst(rst),
+		.read_reg1(rs1),
+		.read_reg2(rs2),
+		.write_reg(rd),
+		.write_data(write_back_data),
+		.write_enable(real_reg_write),
+		.read_data1(reg_read_data1),
+		.read_data2(reg_read_data2),
+		.debug_read_addr(debug_reg_addr),

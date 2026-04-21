@@ -5,8 +5,8 @@ MEMORY
 {
     /* Instruction memory 32KB at 0x80000000 */
     ROM (rx)  : ORIGIN = 0x80000000, LENGTH = 32K
-    /* Data memory 8KB at 0x00000000 */
-    RAM (rwx) : ORIGIN = 0x00000000, LENGTH = 8K
+    /* Data memory 32KB at 0x00000000 */
+    RAM (rwx) : ORIGIN = 0x00000000, LENGTH = 32K
 }
 
 SECTIONS
@@ -39,6 +39,13 @@ SECTIONS
         *(COMMON)
         . = ALIGN(4);
         __bss_end = .;
+    } > RAM
+
+    /* Allocate space for FreeRTOS IRQ stack */
+    .freertos_irq_stack : {
+        . = ALIGN(16);
+        . += 512; /* 512 bytes for IRQ stack */
+        __freertos_irq_stack_top = .;
     } > RAM
 
     /DISCARD/ : {

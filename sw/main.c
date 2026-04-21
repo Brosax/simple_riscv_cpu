@@ -1,15 +1,8 @@
-typedef unsigned int uint32_t;
-typedef unsigned long long uint64_t;
-
-// 内存映射的 I/O 地址
-#define UART_TX         ((volatile uint32_t *) 0x80002000)
-#define MTIME_LOW       ((volatile uint32_t *) 0xFFFF0000)
-#define MTIME_HIGH      ((volatile uint32_t *) 0xFFFF0004)
-#define MTIMECMP_LOW    ((volatile uint32_t *) 0xFFFF0008)
-#define MTIMECMP_HIGH   ((volatile uint32_t *) 0xFFFF000C)
-
-#define CPU_FREQ 12500000
-#define TICK_RATE CPU_FREQ  // 每 1 秒触发一次
+#include <stdint.h>
+#include <stddef.h>
+#include "FreeRTOS.h"
+#include "task.h"
+#include "semphr.h"
 
 // GCC 内置的可变参数宏（完美绕过 #include <stdarg.h> 的缺失）
 typedef __builtin_va_list va_list;
@@ -17,21 +10,68 @@ typedef __builtin_va_list va_list;
 #define va_end(v)     __builtin_va_end(v)
 #define va_arg(v,l)   __builtin_va_arg(v,l)
 
-// ---------------------------------------------------------
-// 1. 底层 UART 驱动与精确延时
-// ---------------------------------------------------------
+// 内存映射的 I/O 地址
+#define UART_TX         ((volatile uint32_t *) 0x80002000)
+
+SemaphoreHandle_t xUartMutex = NULL;
+
 void uart_putc(char c) {
     *UART_TX = c;
-    // 软件等待：12.5MHz 时钟下，115200 波特率发送一个字符(10 bit)需要 ~1085 个周期。
-    // 这里循环一次大概需要几条指令（十几个周期），循环 200 次足够安全。
-    for (volatile int i = 0; i < 200; i++) {
+    for (volatile int i = 0; i < 5000; i++) {
         // 空循环，消耗 CPU 周期，等待硬件把字发完
+        // 12.5MHz clk / 115200 = 109 cycles per bit -> ~1100 cycles per char.
+        // multi-cycle FSM makes this even safer. We use 5000 to be very safe.
     }
 }
 
 void uart_puts(const char *s) {
+    if (xUartMutex != NULL) {
+        xSemaphoreTake(xUartMutex, portMAX_DELAY);
+    }
     while (*s) {
         uart_putc(*s++);
+    }
+    if (xUartMutex != NULL) {
+        xSemaphoreGive(xUartMutex);
+    }
+}
+
+void *memset(void *s, int c, size_t n) {
+    unsigned char *p = s;
+    while (n--) {
+        *p++ = (unsigned char)c;
+    }
+    return s;
+}
+
+void *memcpy(void *dest, const void *src, size_t n) {
+    unsigned char *d = dest;
+    const unsigned char *s = src;
+    while (n--) {
+        *d++ = *s++;
+    }
+    return dest;
+}
+
+// Dummy handler for FreeRTOS timer setup
+void vApplicationSetupTimerInterrupt(void) {
+    // The config parameters configMTIME_BASE_ADDRESS and configMTIMECMP_BASE_ADDRESS
+    // are already defined in FreeRTOSConfig.h and the FreeRTOS RISC-V port will use them.
+}
+
+void Task1(void *pvParameters) {
+    (void)pvParameters;
+    for (;;) {
+        uart_puts("Task 1 is running\n");
+        vTaskDelay(pdMS_TO_TICKS(1000));
+    }
+}
+
+void Task2(void *pvParameters) {
+    (void)pvParameters;
+    for (;;) {
+        uart_puts("Task 2 is running\n");
+        vTaskDelay(pdMS_TO_TICKS(1000));
     }
 }
 
@@ -128,67 +168,17 @@ void printf(const char *format, ...) {
     va_end(args);
 }
 
-// ---------------------------------------------------------
-// 3. 定时器与中断逻辑
-// ---------------------------------------------------------
-uint64_t get_mtime() {
-    uint32_t hi, lo;
-    do {
-        hi = *MTIME_HIGH;
-        lo = *MTIME_LOW;
-    } while (hi != *MTIME_HIGH);
-    return ((uint64_t)hi << 32) | lo;
-}
-
-void set_mtimecmp(uint64_t time) {
-    *MTIMECMP_HIGH = 0xFFFFFFFF;
-    *MTIMECMP_LOW = (uint32_t)(time & 0xFFFFFFFF);
-    *MTIMECMP_HIGH = (uint32_t)(time >> 32);
-}
-
-// 全局变量，记录中断触发的次数
-volatile int tick_count = 0;
-
-void __attribute__((interrupt("machine"))) timer_handler() {
-    tick_count++;
-    
-    // 使用我们自己写的 printf 发送格式化字符串！
-    printf(">> Interrupt triggered! Timer tick: %d, MTIME: %x\r\n", tick_count, *MTIME_LOW);
-
-    // 重新配置下一次闹钟
-    uint64_t current_time = get_mtime();
-    set_mtimecmp(current_time + TICK_RATE);
-}
-
 int main() {
-    // 启动欢迎语
-    printf("\r\n=================================\r\n");
-    printf("   RISC-V CPU is Booting...      \r\n");
-    printf("   printf() implementation OK!   \r\n");
-    printf("=================================\r\n");
+    // 初始化串口 Mutex
+    xUartMutex = xSemaphoreCreateMutex();
 
-    // 1. 设置 mtvec 中断向量
-    uint32_t trap_addr = (uint32_t)&timer_handler;
-    asm volatile("csrw mtvec, %0" : : "r"(trap_addr));
+    uart_puts("Starting FreeRTOS\n");
 
-    // 2. 预设第一次闹钟
-    uint64_t current_time = get_mtime();
-    set_mtimecmp(current_time + TICK_RATE);
+    xTaskCreate(Task1, "Task1", configMINIMAL_STACK_SIZE, NULL, 1, NULL);
+    xTaskCreate(Task2, "Task2", configMINIMAL_STACK_SIZE, NULL, 1, NULL);
 
-    // 3. 开启机器模式定时器中断
-    asm volatile("li t0, 0x80"); 
-    asm volatile("csrs mie, t0");
+    vTaskStartScheduler();
 
-    // 4. 开启全局中断
-    asm volatile("li t0, 0x8");  
-    asm volatile("csrs mstatus, t0");
-
-    printf("Timer initialized. Entering main loop...\r\n");
-
-    // 5. 主循环（死循环假装在处理其他任务）
-    while (1) {
-        asm volatile("nop");
-    }
-
+    for (;;);
     return 0;
 }

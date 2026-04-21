@@ -68,8 +68,7 @@ module instruction_memory(
     end
 
     initial begin
-        // 记得确认这个绝对路径是你电脑上的
-        $readmemh("rtl/main.mem", mem);
+        $readmemh("C:/Users/xiangmin/Desktop/TFG/simple_riscv_cpu_freertos/rtl/main.mem", mem);
     end
 
 endmodule

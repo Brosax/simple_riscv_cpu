@@ -13,13 +13,23 @@ module data_memory(
     output reg [31:0] debug_mem_rdata
 );
 
-    (* ram_style = "block" *) reg [7:0] mem_b0 [0:2047];
-    (* ram_style = "block" *) reg [7:0] mem_b1 [0:2047];
-    (* ram_style = "block" *) reg [7:0] mem_b2 [0:2047];
-    (* ram_style = "block" *) reg [7:0] mem_b3 [0:2047];
+    (* ram_style = "block" *) reg [7:0] mem_b0 [0:8191];
+    (* ram_style = "block" *) reg [7:0] mem_b1 [0:8191];
+    (* ram_style = "block" *) reg [7:0] mem_b2 [0:8191];
+    (* ram_style = "block" *) reg [7:0] mem_b3 [0:8191];
 
-    wire [10:0] word_addr     = address[12:2];
-    wire [10:0] dbg_word_addr = debug_mem_addr[12:2];
+    integer i;
+    initial begin
+        for (i = 0; i < 8192; i = i + 1) begin
+            mem_b0[i] = 8'b0;
+            mem_b1[i] = 8'b0;
+            mem_b2[i] = 8'b0;
+            mem_b3[i] = 8'b0;
+        end
+    end
+
+    wire [12:0] word_addr     = address[14:2];
+    wire [12:0] dbg_word_addr = debug_mem_addr[14:2];
     wire [1:0]  byte_offset   = address[1:0];
 
     // 写掩码组合逻辑
