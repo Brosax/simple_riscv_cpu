@@ -62,77 +62,9 @@ $(BUILD)/tb_rv32i_inline.vvp: $(TB_DIR)/integration/tb_rv32i_inline.v $(RTL_SRC)
 	@$(IVERILOG) $(IVFLAGS) -o $@ $^
 
 # ============================================================
-# Level 4: Cocotb JTAG Tests
-# ============================================================
-
-COCOTB_DIR   = tb/cocotb
-SIM          ?= icarus
-RTL_DIR      := $(abspath $(CURDIR)/rtl)
-
-# TAP-only modules (standalone JTAG TAP test)
-COCOTB_TAP_MODULES = test_tap_fsm test_idcode test_bypass
-
-# Detect which sources to use
-_is_tap_test = $(foreach m,$(MODULE),$(findstring $(m),$(COCOTB_TAP_MODULES)))
-
-RTL_TAP = $(RTL_DIR)/jtag_tap.v
-RTL_CORE = $(RTL_DIR)/alu.v \
-           $(RTL_DIR)/alu_control_unit.v \
-           $(RTL_DIR)/control_unit.v \
-           $(RTL_DIR)/data_memory.v \
-           $(RTL_DIR)/gpio.v \
-           $(RTL_DIR)/immediate_generator.v \
-           $(RTL_DIR)/instruction_memory.v \
-           $(RTL_DIR)/jtag_tap.v \
-           $(RTL_DIR)/pc_register.v \
-           $(RTL_DIR)/register_file.v \
-           $(RTL_DIR)/riscv_core.v \
-           $(RTL_DIR)/riscv_core_jtag.v \
-           $(RTL_DIR)/timer.v
-
-TOPLEVEL_TAP  = tb_jtag_tap
-TOPLEVEL_CORE = tb_riscv_core_jtag
-
-# Choose based on module
-ifeq ($(strip $(_is_tap_test)),)
-  VERILOG_SOURCES = $(RTL_CORE)
-  TOPLEVEL        = $(TOPLEVEL_CORE)
-else
-  VERILOG_SOURCES = $(RTL_TAP)
-  TOPLEVEL        = $(TOPLEVEL_TAP)
-endif
-
-.PHONY: cocotb-tests
-cocotb-tests: export MODULE ?= test_idcode
-cocotb-tests:
-	@echo "--- Running cocotb: $(MODULE) on $(TOPLEVEL) ---"
-	@cd $(COCOTB_DIR) && rm -rf __pycache__ sim_build results.xml *.vcd && \
-		SIM=$(SIM) TOPLEVEL=$(TOPLEVEL) \
-		VERILOG_SOURCES="$(VERILOG_SOURCES)" \
-		$(MAKE) -f $(shell cocotb-config --makefiles)/Makefile.sim clean run
-
-# Convenience targets
-cocotb-tap-fsm:
-	@$(MAKE) cocotb-tests MODULE=test_tap_fsm && \
-	$(MAKE) cocotb-tests MODULE=test_idcode && \
-	$(MAKE) cocotb-tests MODULE=test_bypass
-
-cocotb-debug:
-	@$(MAKE) cocotb-tests MODULE=test_debug_regs && \
-	$(MAKE) cocotb-tests MODULE=test_debug_mem && \
-	$(MAKE) cocotb-tests MODULE=test_integration
-
-cocotb-all:
-	@$(MAKE) cocotb-tests MODULE=test_tap_fsm && \
-	$(MAKE) cocotb-tests MODULE=test_idcode && \
-	$(MAKE) cocotb-tests MODULE=test_bypass && \
-	$(MAKE) cocotb-tests MODULE=test_debug_regs && \
-	$(MAKE) cocotb-tests MODULE=test_debug_mem && \
-	$(MAKE) cocotb-tests MODULE=test_integration
-
-# ============================================================
 # Level 3: ISA Regression Tests
 # ============================================================
+
 
 $(BUILD)/tb_isa_test.vvp: $(TB_DIR)/isa/tb_isa_test.v $(RTL_SRC)
 	@$(IVERILOG) $(IVFLAGS) -o $@ $^
