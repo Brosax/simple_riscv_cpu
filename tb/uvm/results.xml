@@ -1,6 +1,0 @@
-<testsuites name="results">
-  <testsuite name="all" package="all">
-    <property name="random_seed" value="1774548754" />
-    <testcase name="run_test" classname="jtag_test" file="/mnt/c/Users/xiangmin/Desktop/TFG/simple_riscv_cpu/tb/uvm/jtag_test.py" lineno="45" time="0.03680706024169922" sim_time_ns="6110.0" ratio_time="166000.76072030055" />
-  </testsuite>
-</testsuites>
